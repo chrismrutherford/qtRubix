@@ -12,36 +12,15 @@ from datetime import datetime
 
 class DQN(nn.Module):
     def __init__(self, history_length=4, hidden_size=512, output_size=18):
-        # Calculate input size based on history length
-        # Initial state (54) + current state (54) + past states (54 * history_length) + move history (18 * history_length)
-        input_size = 54 + 54 + (54 * history_length) + (18 * history_length)
+        # Simplified input: just current state (54)
+        input_size = 54
         super(DQN, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_size, 1024),
+            nn.Linear(input_size, 256),
             nn.ReLU(),
-            nn.LayerNorm(1024),
-            nn.Dropout(0.1),
-            
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.LayerNorm(512),
-            nn.Dropout(0.1),
-            
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.LayerNorm(256),
-            nn.Dropout(0.1),
-            
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.LayerNorm(128),
-            nn.Dropout(0.1),
-            
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.LayerNorm(64),
-            
-            nn.Linear(64, output_size)
+            nn.Linear(128, output_size)
         )
         
     def forward(self, x):
@@ -85,40 +64,8 @@ class RubiksCubeEnvironment:
         self.reward_history.clear()
         
     def get_state(self):
-        """Get complete state including history"""
-        current_state = self.get_current_state()
-        
-        # If initial state hasn't been set, use current state
-        if self.initial_state is None:
-            self.initial_state = current_state.copy()
-            
-        # Add initial state
-        state = self.initial_state.copy()
-        state.extend(current_state)
-        
-        # Add historical states (padded with -1 for invalid entries)
-        historical_states = list(self.state_history)
-        while len(historical_states) < self.history_length:
-            historical_states.append([-1] * 54)  # Use -1 to indicate invalid/padding
-        historical_data = []
-        for past_state in historical_states[:self.history_length]:
-            historical_data.extend(past_state)
-
-        # Add move history as one-hot vectors (padded with -1)
-        move_history = list(self.move_history)
-        while len(move_history) < self.history_length:
-            move_history.append(None)
-        move_data = []
-        for move in move_history[:self.history_length]:
-            move_encoding = [-1] * len(self.action_space)  # Initialize with -1
-            if move is not None:
-                move_encoding = [0] * len(self.action_space)  # Reset to 0s for valid moves
-                move_encoding[self.action_space.index(move)] = 1
-            move_data.extend(move_encoding)
-
-        # Combine all data: initial state + current state + historical states + move history
-        state = self.initial_state + current_state + historical_data + move_data
-        return np.array(state, dtype=np.float32)
+        """Get current state only"""
+        return np.array(self.get_current_state(), dtype=np.float32)
     
     def step(self, action, ui_callback=None):
         # Store score before move
@@ -216,11 +163,11 @@ class RubiksCubeSolver:
         # Then try to load existing model if it exists
         self.load_model('rubiks_model.pth')
         self.memory = deque(maxlen=10000)  # Store 10000 states in memory
-        self.batch_size = 128   # Increased batch size
-        self.gamma = 0.99      # Higher discount factor
+        self.batch_size = 32
+        self.gamma = 0.95
         self.epsilon = 1.0
-        self.epsilon_min = 0.05  # Lower minimum exploration
-        self.epsilon_decay = 0.997  # Slightly faster decay
+        self.epsilon_min = 0.1
+        self.epsilon_decay = 0.999
         self.target_update = 10
         self.training = False
         
