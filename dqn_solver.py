@@ -13,8 +13,8 @@ from datetime import datetime
 class DQN(nn.Module):
     def __init__(self, history_length=16, hidden_size=512, output_size=18):
         # Calculate input size based on history length
-        # Current state (54) + past states (54 * history_length) + move history (18 * history_length)
-        input_size = 54 + (54 * history_length) + (18 * history_length)
+        # Initial state (54) + current state (54) + past states (54 * history_length) + move history (18 * history_length)
+        input_size = 54 + 54 + (54 * history_length) + (18 * history_length)
         super(DQN, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
@@ -52,6 +52,7 @@ class RubiksCubeEnvironment:
     def __init__(self, cube, history_length=16):
         self.cube = cube
         self.history_length = history_length
+        self.initial_state = None
         self.action_space = [
             'F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S',
             "F'", "B'", "U'", "D'", "L'", "R'", "M'", "E'", "S'"
@@ -76,6 +77,14 @@ class RubiksCubeEnvironment:
     def get_state(self):
         """Get complete state including history"""
         current_state = self.get_current_state()
+        
+        # If initial state hasn't been set, use current state
+        if self.initial_state is None:
+            self.initial_state = current_state.copy()
+            
+        # Add initial state
+        state = self.initial_state.copy()
+        state.extend(current_state)
         
         # Add historical states
         historical_data = []
@@ -105,6 +114,10 @@ class RubiksCubeEnvironment:
     def step(self, action, ui_callback=None):
         # Store score before move
         previous_score = (self.cube.get_basic_score() + self.cube.get_advanced_score()) / 2
+        
+        # Reset initial state if this is first move after reset
+        if self.initial_state is None:
+            self.initial_state = self.get_current_state()
         
         # Store current state in history before making move
         self.state_history.append(self.get_current_state())

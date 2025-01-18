@@ -25,6 +25,8 @@ class RubiksCube:
         self.reset()
         
     def reset(self):
+        # Reset initial state
+        self.initial_state = None
         # Initialize cube faces: front, back, up, down, left, right
         # Each face is a 3x3 grid represented by colors
         self.colors = {
