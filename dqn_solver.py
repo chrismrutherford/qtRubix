@@ -151,29 +151,12 @@ class RubiksCubeEnvironment:
         # Get new state
         new_state = self.get_state()
         
-        # Calculate new score and reward
+        # Calculate reward as average of both scores, normalized to 0-1
         new_score = (self.cube.get_basic_score() + self.cube.get_advanced_score()) / 2
+        reward = new_score / 100  # Convert percentage to 0-1 scale
         
-        # Calculate step reward
-        step_reward = (new_score - previous_score) / 100
-        
-        # Add bonus reward for solving
+        # Check if solved
         done = new_score == 100
-        if done:
-            step_reward += 1.0
-            
-        # Accumulate total reward and increment step count
-        self.total_reward += step_reward
-        self.step_count += 1
-        
-        # If episode is done, calculate final normalized reward
-        if done:
-            reward = self.total_reward / self.step_count
-            # Reset accumulators
-            self.total_reward = 0
-            self.step_count = 0
-        else:
-            reward = step_reward
         
         return new_state, reward, done
 
