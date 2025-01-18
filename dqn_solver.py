@@ -20,27 +20,27 @@ class DQN(nn.Module):
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.LayerNorm(hidden_size),
-            nn.Dropout(0.3),
+            #nn.Dropout(0.3),
             
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.LayerNorm(hidden_size),
-            nn.Dropout(0.3),
+            #nn.Dropout(0.3),
             
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.LayerNorm(hidden_size // 2),
-            nn.Dropout(0.3),
+            #nn.Dropout(0.3),
             
             nn.Linear(hidden_size // 2, hidden_size // 4),
             nn.ReLU(),
             nn.LayerNorm(hidden_size // 4),
-            nn.Dropout(0.3),
+            #nn.Dropout(0.3),
             
             nn.Linear(hidden_size // 4, hidden_size // 8),
             nn.ReLU(),
             nn.LayerNorm(hidden_size // 8),
-            nn.Dropout(0.3),
+            #nn.Dropout(0.3),
             
             nn.Linear(hidden_size // 8, output_size)
         )
