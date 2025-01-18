@@ -568,6 +568,7 @@ class MainWindow(QMainWindow):
         """Perform random moves to scramble the cube"""
         import random
         self.cube.reset()  # Reset first
+        self.solver.env.initial_state = None  # Clear initial state before scrambling
         self.moves_remaining = self.scramble_spin.value()
         self.timer = QTimer()
         self.timer.timeout.connect(self.perform_random_move)
@@ -584,6 +585,8 @@ class MainWindow(QMainWindow):
         self.moves_remaining -= 1
         if self.moves_remaining <= 0:
             self.timer.stop()
+            # Set initial state after scrambling is complete
+            self.solver.env.initial_state = self.solver.env.get_current_state()
 
     def reset_cube(self):
         """Reset the cube to its initial solved state"""

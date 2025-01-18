@@ -115,10 +115,6 @@ class RubiksCubeEnvironment:
         # Store score before move
         previous_score = (self.cube.get_basic_score() + self.cube.get_advanced_score()) / 2
         
-        # Reset initial state if this is first move after reset
-        if self.initial_state is None:
-            self.initial_state = self.get_current_state()
-        
         # Store current state in history before making move
         self.state_history.append(self.get_current_state())
         
