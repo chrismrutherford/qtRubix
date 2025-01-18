@@ -11,7 +11,7 @@ from collections import deque
 from datetime import datetime
 
 class DQN(nn.Module):
-    def __init__(self, input_size=72, hidden_size=4096, output_size=18):
+    def __init__(self, input_size=72, hidden_size=512, output_size=18):
         super(DQN, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
