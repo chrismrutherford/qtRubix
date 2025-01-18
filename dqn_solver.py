@@ -159,11 +159,11 @@ class RubiksCubeSolver:
         self.solved_count = 0
         self.total_attempts = 0
         
-        # Always try to load existing model first
+        # Initialize target model with current model weights first
+        self.target_model.load_state_dict(self.model.state_dict())
+        
+        # Then try to load existing model if it exists
         self.load_model('rubiks_model.pth')
-        # If no model was loaded, initialize target model with current model weights
-        if not os.path.exists('rubiks_model.pth'):
-            self.target_model.load_state_dict(self.model.state_dict())
         self.memory = deque(maxlen=10000)  # Increased buffer size for better learning
         self.batch_size = 32   # Reduced batch size to match smaller buffer
         self.gamma = 0.95  # Slightly reduced discount factor

@@ -363,6 +363,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.cube = RubiksCube()
+        # Initialize solver at startup
+        self.solver = RubiksCubeSolver(self.cube)
         self.blink_timer = QTimer()
         self.blink_timer.timeout.connect(self.blink_timeout)
         self.blink_count = 0
@@ -632,9 +634,6 @@ class MainWindow(QMainWindow):
             
     def solve_cube(self):
         """Attempt to solve the cube using the trained solver"""
-        if not hasattr(self, 'solver'):
-            self.solver = RubiksCubeSolver(self.cube)
-            
         solution, reward, scrambled_state, state_history = self.solver.solve(max_steps=self.solve_spin.value())
         if solution:
             self.blink_success()  # Trigger success animation
@@ -663,8 +662,7 @@ class MainWindow(QMainWindow):
         
     def train_solver(self):
         """Train the DQN solver"""
-        print("\nInitializing DQN solver...")
-        self.solver = RubiksCubeSolver(self.cube)
+        print("\nStarting training...")
         
         def update_ui():
             """Update UI and process events if real-time updates are enabled"""
