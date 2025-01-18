@@ -2,6 +2,8 @@
 
 A 3D Rubik's Cube simulator built with PyQt5 and OpenGL.
 
+![Rubik's Cube Simulator](qtRubix.png)
+
 ## Features
 
 - Interactive 3D cube visualization with mouse rotation
