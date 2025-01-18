@@ -6,6 +6,7 @@ import random
 import os
 import time
 import logging
+import matplotlib.pyplot as plt
 from collections import deque
 from datetime import datetime
 
@@ -133,6 +134,9 @@ class RubiksCubeSolver:
         # Initialize success/failure tracking
         self.total_attempts = 0
         self.successful_solves = 0
+        self.failed_solves = 0
+        self.success_rates = []  # Track success rate over time
+        self.plot_interval = 100  # Update plot every 100 attempts
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Using device: {self.device}")
@@ -304,12 +308,14 @@ class RubiksCubeSolver:
                 # Log successful solve with both states
                 self.successful_solves += 1
                 success_rate = (self.successful_solves / self.total_attempts) * 100
+                self.success_rates.append(success_rate)
                 
                 self.logger.info("\n=== Successful Solve ===")
                 self.logger.info(f"Scramble Moves: {', '.join(scramble_moves)}")
                 self.logger.info(f"Solution Moves: {', '.join(solution_moves)}")
                 self.logger.info(f"Total Moves: {len(scramble_moves) + len(solution_moves)}")
                 self.logger.info(f"Final Score: {final_score:.1f}%")
+                self.logger.info(f"Success/Fail: {self.successful_solves}/{self.failed_solves}")
                 self.logger.info(f"Success Rate: {success_rate:.2f}% ({self.successful_solves}/{self.total_attempts})")
                 self.logger.info(f"Initial Scrambled State:\n{scrambled_state}")
                 self.logger.info(f"Final Solved State:\n{self.get_cube_state_str()}")
@@ -321,10 +327,16 @@ class RubiksCubeSolver:
             state = next_state
         
         self.total_attempts += 1
-        
+        if not done:
+            self.failed_solves += 1
+            
         # Calculate final reward based on cube score
         final_score = (self.env.cube.get_basic_score() + self.env.cube.get_advanced_score()) / 2
         total_reward = final_score / 100  # Linear scaling from 0-100% to 0-1
+        
+        # Update plot periodically
+        if self.total_attempts % self.plot_interval == 0:
+            self.plot_success_rate()
         
         if show_logs:  # Only show periodic status updates
             success_rate = (self.successful_solves / self.total_attempts) * 100
@@ -339,6 +351,22 @@ class RubiksCubeSolver:
         
         self.training = False
         
+    def plot_success_rate(self):
+        """Plot the success rate over time"""
+        plt.figure(figsize=(10, 6))
+        plt.plot(range(len(self.success_rates)), self.success_rates, 'b-', label='Success Rate')
+        plt.xlabel('Training Iterations (x100)')
+        plt.ylabel('Success Rate (%)')
+        plt.title('Rubik\'s Cube Solver Success Rate Over Time')
+        plt.grid(True)
+        plt.legend()
+        
+        # Save plot
+        if not os.path.exists('plots'):
+            os.makedirs('plots')
+        plt.savefig('plots/success_rate.png')
+        plt.close()
+
     def get_cube_state_str(self):
         """Convert current cube state to string representation"""
         state_str = []
