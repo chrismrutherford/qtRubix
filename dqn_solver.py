@@ -135,7 +135,7 @@ class RubiksCubeSolver:
         # If no model was loaded, initialize target model with current model weights
         if not os.path.exists('rubiks_model.pth'):
             self.target_model.load_state_dict(self.model.state_dict())
-        self.memory = deque(maxlen=100)  # Reduced buffer size
+        self.memory = deque(maxlen=10000)  # Increased buffer size for better learning
         self.batch_size = 32   # Reduced batch size to match smaller buffer
         self.gamma = 0.95  # Slightly reduced discount factor
         self.epsilon = 1.0
