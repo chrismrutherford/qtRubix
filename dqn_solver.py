@@ -12,8 +12,8 @@ from datetime import datetime
 
 class DQN(nn.Module):
     def __init__(self, history_length=4, hidden_size=512, output_size=18):
-        # Input: current state (54) + initial state (54) = 108
-        input_size = 108
+        # Input: current state (54) + initial state (54) + last move (18) = 126
+        input_size = 126
         super(DQN, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, 256),
@@ -23,9 +23,16 @@ class DQN(nn.Module):
             nn.Linear(128, output_size)
         )
         
-    def forward(self, current_state, initial_state):
-        # Concatenate current and initial states
-        combined_state = torch.cat((current_state, initial_state), dim=1)
+    def forward(self, current_state, initial_state, last_move=None):
+        # Create one-hot encoded move tensor if provided
+        if last_move is None:
+            move_tensor = torch.zeros(current_state.size(0), 18).to(current_state.device)
+        else:
+            move_tensor = torch.zeros(current_state.size(0), 18).to(current_state.device)
+            move_tensor.scatter_(1, last_move.unsqueeze(1), 1)
+            
+        # Concatenate current state, initial state and move
+        combined_state = torch.cat((current_state, initial_state, move_tensor), dim=1)
         return self.network(combined_state)
 
 class RubiksCubeEnvironment:
@@ -33,6 +40,8 @@ class RubiksCubeEnvironment:
         self.cube = cube
         self.history_length = history_length
         self.initial_state = None
+        self.last_move = None
+        self.last_move = None
         self.total_reward = 0
         self.step_count = 0
         self.action_space = [
@@ -76,7 +85,8 @@ class RubiksCubeEnvironment:
         # Store current state in history before making move
         self.state_history.append(self.get_current_state())
         
-        # Perform move
+        # Store action and perform move
+        self.last_move = action
         move = self.action_space[action]
         self.move_history.append(move)
         if ui_callback:
@@ -228,8 +238,9 @@ class RubiksCubeSolver:
         
         current_state = torch.FloatTensor(state).view(1, -1).to(self.device)
         initial_state = torch.FloatTensor(self.env.initial_state).view(1, -1).to(self.device)
+        last_move = torch.LongTensor([self.env.last_move]).to(self.device) if self.env.last_move is not None else None
         with torch.no_grad():
-            q_values = self.model(current_state, initial_state)
+            q_values = self.model(current_state, initial_state, last_move)
         return q_values.argmax().item()
     
     def replay(self):
