@@ -20,22 +20,22 @@ class DQN(nn.Module):
             nn.Linear(input_size, 1024),
             nn.ReLU(),
             nn.LayerNorm(1024),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
             
             nn.Linear(1024, 512),
             nn.ReLU(),
             nn.LayerNorm(512),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
             
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.LayerNorm(256),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
             
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.LayerNorm(128),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
             
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -292,9 +292,7 @@ class RubiksCubeSolver:
         next_q_values = self.target_model(next_states).max(1)[0].detach()
         target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
         
-        # Add constant 0.1 loss to encourage exploration
-        mse_loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
-        loss = mse_loss + 0.1
+        loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
         
         self.optimizer.zero_grad()
         loss.backward()
