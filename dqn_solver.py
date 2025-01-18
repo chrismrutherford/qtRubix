@@ -267,6 +267,7 @@ class RubiksCubeSolver:
     def setup_logging(self):
         """Initialize logging configuration"""
         self.logger = logging.getLogger('RubiksSolver')
+        self.last_log_time = 0  # Track last log time
         
         # Only set up handlers if they haven't been added yet
         if not self.logger.handlers:
@@ -334,16 +335,19 @@ class RubiksCubeSolver:
                 success_rate = (self.successful_solves / self.total_attempts) * 100
                 self.success_rates.append(success_rate)
                 
-                self.logger.info("\n=== Successful Solve ===")
-                self.logger.info(f"Scramble Moves: {', '.join(scramble_moves)}")
-                self.logger.info(f"Solution Moves: {', '.join(solution_moves)}")
-                self.logger.info(f"Total Moves: {len(scramble_moves) + len(solution_moves)}")
-                self.logger.info(f"Final Score: {final_score:.1f}%")
-                self.logger.info(f"Success/Fail: {self.successful_solves}/{self.failed_solves}")
-                self.logger.info(f"Success Rate: {success_rate:.2f}% ({self.successful_solves}/{self.total_attempts})")
-                self.logger.info(f"Initial Scrambled State:\n{scrambled_state}")
-                self.logger.info(f"Final Solved State:\n{self.get_cube_state_str()}")
-                self.logger.info("==================\n")
+                current_time = time.time()
+                if current_time - self.last_log_time >= 1.0:  # Only log if 1 second has passed
+                    self.logger.info("\n=== Successful Solve ===")
+                    self.logger.info(f"Scramble Moves: {', '.join(scramble_moves)}")
+                    self.logger.info(f"Solution Moves: {', '.join(solution_moves)}")
+                    self.logger.info(f"Total Moves: {len(scramble_moves) + len(solution_moves)}")
+                    self.logger.info(f"Final Score: {final_score:.1f}%")
+                    self.logger.info(f"Success/Fail: {self.successful_solves}/{self.failed_solves}")
+                    self.logger.info(f"Success Rate: {success_rate:.2f}% ({self.successful_solves}/{self.total_attempts})")
+                    self.logger.info(f"Initial Scrambled State:\n{scrambled_state}")
+                    self.logger.info(f"Final Solved State:\n{self.get_cube_state_str()}")
+                    self.logger.info("==================\n")
+                    self.last_log_time = current_time
                 
                 self.solved_count += 1
                 break
@@ -364,11 +368,14 @@ class RubiksCubeSolver:
         
         if show_logs:  # Only show periodic status updates
             success_rate = (self.successful_solves / self.total_attempts) * 100
-            self.logger.info("\n=== Status Update ===")
-            self.logger.info(f"Total Attempts: {self.total_attempts}")
-            self.logger.info(f"Solved: {self.successful_solves}/{self.total_attempts} ({success_rate:.2f}%)")
-            self.logger.info(f"Current Epsilon: {self.epsilon:.3f}")
-            self.logger.info("==================\n")
+            current_time = time.time()
+            if current_time - self.last_log_time >= 1.0:  # Only log if 1 second has passed
+                self.logger.info("\n=== Status Update ===")
+                self.logger.info(f"Total Attempts: {self.total_attempts}")
+                self.logger.info(f"Solved: {self.successful_solves}/{self.total_attempts} ({success_rate:.2f}%)")
+                self.logger.info(f"Current Epsilon: {self.epsilon:.3f}")
+                self.logger.info("==================\n")
+                self.last_log_time = current_time
             
         if total_reward > 0 and callback:
             callback()  # Trigger success animation
