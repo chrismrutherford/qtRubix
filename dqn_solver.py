@@ -141,12 +141,20 @@ class RubiksCubeSolver:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Using device: {self.device}")
         if torch.cuda.is_available():
-            print(f"GPU: {torch.cuda.get_device_name(0)}")
+            self.logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
             
         self.env = RubiksCubeEnvironment(cube)
         self.model = DQN().to(self.device)
         self.target_model = DQN().to(self.device)
-        print("Neural networks initialized and moved to device")
+        
+        # Log network architecture details
+        self.logger.info("\n=== Neural Network Architecture ===")
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        self.logger.info(f"Total parameters: {total_params:,}")
+        self.logger.info(f"Trainable parameters: {trainable_params:,}")
+        self.logger.info(f"Network structure:\n{self.model}")
+        self.logger.info("===============================\n")
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.solved_count = 0
         self.total_attempts = 0
