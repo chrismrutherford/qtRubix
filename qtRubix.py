@@ -1,8 +1,10 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QGraphicsView, QGraphicsScene, QApplication,
-                            QLabel, QOpenGLWidget)
+                            QLabel, QOpenGLWidget, QProgressDialog, QCheckBox,
+                            QMessageBox, QSpinBox)
+from dqn_solver import RubiksCubeSolver
 from PyQt5.QtGui import QColor, QBrush
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import sys
@@ -10,6 +12,19 @@ import math
 
 class RubiksCube:
     def __init__(self):
+        self.scramble_steps = 4  # Default scramble steps
+        self.solve_steps = 20    # Default solve steps
+        self.default_faces = {
+            'F': [['red']*3 for _ in range(3)],
+            'B': [['orange']*3 for _ in range(3)],
+            'U': [['white']*3 for _ in range(3)],
+            'D': [['yellow']*3 for _ in range(3)],
+            'L': [['green']*3 for _ in range(3)],
+            'R': [['blue']*3 for _ in range(3)]
+        }
+        self.reset()
+        
+    def reset(self):
         # Initialize cube faces: front, back, up, down, left, right
         # Each face is a 3x3 grid represented by colors
         self.colors = {
@@ -22,14 +37,57 @@ class RubiksCube:
         }
         
         # Initialize faces with their default colors
-        self.faces = {
-            'F': [['red']*3 for _ in range(3)],
-            'B': [['orange']*3 for _ in range(3)],
-            'U': [['white']*3 for _ in range(3)],
-            'D': [['yellow']*3 for _ in range(3)],
-            'L': [['green']*3 for _ in range(3)],
-            'R': [['blue']*3 for _ in range(3)]
-        }
+        self.faces = {face: [row[:] for row in face_data] 
+                     for face, face_data in self.default_faces.items()}
+
+    def get_basic_score(self):
+        """Calculate basic completion score based on face matches"""
+        score = 0
+        max_score = 54  # 9 squares per face * 6 faces
+        
+        # Check each square against its face's center color
+        for face in self.faces:
+            center = self.faces[face][1][1]  # Center color of this face
+            for row in self.faces[face]:
+                for square in row:
+                    if square == center:
+                        score += 1
+
+        # Convert to percentage
+        return round((score / max_score) * 100, 1)
+        
+    def get_advanced_score(self):
+        """Calculate entropy-based score for cube state"""
+        import math
+        
+        # Calculate color distribution entropy for each face
+        total_entropy = 0
+        for face in self.faces:
+            # Count occurrences of each color on this face
+            color_counts = {}
+            total_squares = 9  # 3x3 face
+            
+            for row in self.faces[face]:
+                for color in row:
+                    color_counts[color] = color_counts.get(color, 0) + 1
+            
+            # Calculate entropy for this face
+            face_entropy = 0
+            for count in color_counts.values():
+                p = count / total_squares
+                face_entropy -= p * math.log2(p)
+            
+            total_entropy += face_entropy
+        
+        # Maximum entropy would be when colors are evenly distributed
+        # (log2(6) ≈ 2.58 per face, times 6 faces)
+        max_entropy = 6 * math.log2(6)
+        
+        # Convert to percentage where 100% means solved (minimum entropy)
+        # and 0% means maximum disorder (maximum entropy)
+        score = (1 - (total_entropy / max_entropy)) * 100
+        
+        return round(score, 1)
 
     def rotate_face_clockwise(self, face):
         # Rotate the selected face clockwise
@@ -305,6 +363,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.cube = RubiksCube()
+        self.blink_timer = QTimer()
+        self.blink_timer.timeout.connect(self.blink_timeout)
+        self.blink_count = 0
+        self.original_style = None
         self.init_ui()
 
     def init_ui(self):
@@ -355,9 +417,91 @@ class MainWindow(QMainWindow):
         moves_layout.addLayout(ccw_layout)
         
         layout.addLayout(moves_layout)
+
+        # Add utility buttons
+        utils_layout = QHBoxLayout()
         
-        # Update all views
+        # Scramble controls
+        scramble_layout = QHBoxLayout()
+        random_btn = QPushButton("Random")
+        random_btn.setFixedSize(80, 40)
+        random_btn.clicked.connect(self.random_scramble)
+        random_btn.setToolTip("Perform random moves")
+        scramble_layout.addWidget(random_btn)
+        
+        self.scramble_spin = QSpinBox()
+        self.scramble_spin.setRange(1, 1000000)
+        self.scramble_spin.setValue(4)
+        self.scramble_spin.setToolTip("Number of scramble moves for training")
+        self.scramble_spin.valueChanged.connect(self.update_scramble_steps)
+        scramble_layout.addWidget(self.scramble_spin)
+        
+        utils_layout.addLayout(scramble_layout)
+        
+        # Reset button
+        reset_btn = QPushButton("Reset")
+        reset_btn.setFixedSize(80, 40)
+        reset_btn.clicked.connect(self.reset_cube)
+        reset_btn.setToolTip("Reset cube to initial state")
+        utils_layout.addWidget(reset_btn)
+        
+        # Solve controls
+        solve_layout = QHBoxLayout()
+        solve_btn = QPushButton("Solve")
+        solve_btn.setFixedSize(80, 40)
+        solve_btn.setEnabled(True)
+        solve_btn.clicked.connect(self.solve_cube)
+        solve_btn.setToolTip("Attempt to solve cube")
+        solve_layout.addWidget(solve_btn)
+        
+        self.solve_spin = QSpinBox()
+        self.solve_spin.setRange(1, 1000000)
+        self.solve_spin.setValue(20)
+        self.solve_spin.setToolTip("Maximum solve moves for training")
+        self.solve_spin.valueChanged.connect(self.update_solve_steps)
+        solve_layout.addWidget(self.solve_spin)
+        
+        utils_layout.addLayout(solve_layout)
+        
+        # Train button (placeholder)
+        train_btn = QPushButton("Train")
+        train_btn.setFixedSize(80, 40)
+        train_btn.setToolTip("Train DQN solver")
+        train_btn.clicked.connect(self.train_solver)
+        utils_layout.addWidget(train_btn)
+        
+        # Add save button
+        save_btn = QPushButton("Save Network")
+        save_btn.clicked.connect(self.save_network)
+        save_btn.setToolTip("Save the current network weights")
+        utils_layout.addWidget(save_btn)
+        
+        # Add real-time update checkbox
+        self.realtime_updates = QCheckBox("Real-time Updates")
+        self.realtime_updates.setChecked(True)
+        self.realtime_updates.setToolTip("Enable/disable real-time UI updates during training")
+        utils_layout.addWidget(self.realtime_updates)
+        
+        layout.addLayout(utils_layout)
+
+        # Add score display
+        self.score_label = QLabel()
+        self.score_label.setAlignment(Qt.AlignCenter)
+        self.score_label.setStyleSheet("""
+            QLabel { 
+                color: white; 
+                font-weight: bold;
+                font-size: 14px;
+                background-color: #444;
+                padding: 5px;
+                border-radius: 3px;
+            }
+        """)
+        layout.addWidget(self.score_label)
+        
+        # Update all views and score
         self.update_views()
+        self.update_score()
 
     def get_move_description(self, move):
         descriptions = {
@@ -409,11 +553,147 @@ class MainWindow(QMainWindow):
         elif move == "S'":
             self.cube.rotate_S_ccw()
         self.update_views()
+        self.update_score()
 
     def update_views(self):
         for face, view in self.views.items():
             view.update_face(self.cube.faces[face], self.cube.colors)
         self.gl_widget.update()
+
+    def random_scramble(self):
+        """Perform random moves to scramble the cube"""
+        import random
+        self.cube.reset()  # Reset first
+        self.moves_remaining = self.scramble_spin.value()
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.perform_random_move)
+        self.timer.start(10)  # 10ms between moves
+        
+    def perform_random_move(self):
+        """Perform a single random move"""
+        import random
+        moves = ['F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S',
+                "F'", "B'", "U'", "D'", "L'", "R'", "M'", "E'", "S'"]
+        move = random.choice(moves)
+        self.perform_move(move)
+        
+        self.moves_remaining -= 1
+        if self.moves_remaining <= 0:
+            self.timer.stop()
+
+    def reset_cube(self):
+        """Reset the cube to its initial solved state"""
+        self.cube.reset()
+        self.update_views()
+        self.update_score()
+
+    def update_score(self):
+        """Update the score display"""
+        basic_score = self.cube.get_basic_score()
+        entropy_score = self.cube.get_advanced_score()
+        self.score_label.setText(f"Basic Score: {basic_score}% | Entropy Score: {entropy_score}%")
+        
+    def blink_success(self):
+        """Start blinking animation for success"""
+        if self.original_style is None:
+            self.original_style = self.score_label.styleSheet()
+        self.blink_count = 0
+        self.blink_timer.start(250)  # Blink every 250ms
+        
+    def blink_timeout(self):
+        """Handle each blink interval"""
+        self.blink_count += 1
+        if self.blink_count > 6:  # 3 full blinks
+            self.blink_timer.stop()
+            self.score_label.setStyleSheet(self.original_style)
+            return
+            
+        if self.blink_count % 2 == 0:
+            self.score_label.setStyleSheet(self.original_style)
+        else:
+            self.score_label.setStyleSheet("""
+                QLabel { 
+                    color: black; 
+                    font-weight: bold;
+                    font-size: 14px;
+                    background-color: #00ff00;
+                    padding: 5px;
+                    border-radius: 3px;
+                }
+            """)
+        
+    def save_network(self):
+        """Save the current network weights"""
+        if hasattr(self, 'solver'):
+            self.solver.save_model()
+            QMessageBox.information(self, "Success", "Network saved successfully!")
+        else:
+            QMessageBox.warning(self, "Error", "No trained network to save!")
+            
+    def solve_cube(self):
+        """Attempt to solve the cube using the trained solver"""
+        if not hasattr(self, 'solver'):
+            self.solver = RubiksCubeSolver(self.cube)
+            
+        solution, reward, scrambled_state, state_history = self.solver.solve(max_steps=self.solve_spin.value())
+        if solution:
+            self.blink_success()  # Trigger success animation
+            
+            # Build detailed solution message showing each move and resulting state
+            message = f"Solution found with {len(solution)} moves!\n\n"
+            message += f"Initial Scrambled State:\n{scrambled_state}\n\n"
+            message += "Solution Steps:\n"
+            
+            # Add each move and the resulting state
+            for i, (move, state) in enumerate(zip(solution, state_history[1:]), 1):
+                message += f"\nStep {i}: {move}\n"
+                message += f"State after move:\n{state}\n"
+                message += "-" * 40  # Separator line
+            QMessageBox.information(self, "Solution Details", message)
+        else:
+            QMessageBox.warning(self, "No Solution", "Could not find solution within move limit")
+            
+    def update_scramble_steps(self, value):
+        """Update cube's scramble steps setting"""
+        self.cube.scramble_steps = value
+        
+    def update_solve_steps(self, value):
+        """Update cube's solve steps setting"""
+        self.cube.solve_steps = value
+        
+    def train_solver(self):
+        """Train the DQN solver"""
+        print("\nInitializing DQN solver...")
+        self.solver = RubiksCubeSolver(self.cube)
+        
+        def update_ui():
+            """Update UI and process events if real-time updates are enabled"""
+            self.update_views()
+            self.update_score()
+            QApplication.processEvents()
+        
+        # Create progress dialog
+        progress = QProgressDialog("Training DQN solver...", "Cancel", 0, 1000000, self)
+        progress.setWindowTitle("Training Progress")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        
+        def training_callback():
+            """Combined callback that handles successful solves"""
+            if self.realtime_updates.isChecked():
+                update_ui()  # Update UI if real-time enabled
+                self.blink_success()  # Trigger blink animation on success
+        
+        # Train in batches to update UI
+        training_iterations = 1000000
+        for i in range(training_iterations):
+            if progress.wasCanceled():
+                break
+            self.solver.train(callback=training_callback)
+            progress.setValue(i)
+            QApplication.processEvents()
+        
+        progress.setValue(training_iterations)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
