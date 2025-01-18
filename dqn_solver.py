@@ -42,6 +42,8 @@ class RubiksCubeEnvironment:
         self.cube = cube
         self.history_length = history_length
         self.initial_state = None
+        self.total_reward = 0
+        self.step_count = 0
         self.action_space = [
             'F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S',
             "F'", "B'", "U'", "D'", "L'", "R'", "M'", "E'", "S'"
@@ -63,6 +65,15 @@ class RubiksCubeEnvironment:
                     state.append(self.color_map[color])
         return state
 
+    def reset(self):
+        """Reset the environment state"""
+        self.total_reward = 0
+        self.step_count = 0
+        self.initial_state = None
+        self.state_history.clear()
+        self.move_history.clear()
+        self.reward_history.clear()
+        
     def get_state(self):
         """Get complete state including history"""
         current_state = self.get_current_state()
@@ -143,13 +154,26 @@ class RubiksCubeEnvironment:
         # Calculate new score and reward
         new_score = (self.cube.get_basic_score() + self.cube.get_advanced_score()) / 2
         
-        # Reward is the improvement in score
-        reward = (new_score - previous_score) / 100
+        # Calculate step reward
+        step_reward = (new_score - previous_score) / 100
         
         # Add bonus reward for solving
         done = new_score == 100
         if done:
-            reward += 1.0
+            step_reward += 1.0
+            
+        # Accumulate total reward and increment step count
+        self.total_reward += step_reward
+        self.step_count += 1
+        
+        # If episode is done, calculate final normalized reward
+        if done:
+            reward = self.total_reward / self.step_count
+            # Reset accumulators
+            self.total_reward = 0
+            self.step_count = 0
+        else:
+            reward = step_reward
         
         return new_state, reward, done
 
@@ -313,7 +337,8 @@ class RubiksCubeSolver:
         solution_moves = []
         show_logs = (self.total_attempts % 10000 == 0)  # Reduced frequency
         
-        # Reset and scramble cube
+        # Reset environment and cube
+        self.env.reset()
         self.env.cube.reset()
         for _ in range(self.env.cube.scramble_steps):
             action = random.randint(0, 17)
