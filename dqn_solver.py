@@ -20,22 +20,22 @@ class DQN(nn.Module):
             nn.Linear(input_size, 1024),
             nn.ReLU(),
             nn.LayerNorm(1024),
-            nn.Dropout(0.3),
+            nn.Dropout(0.1),
             
             nn.Linear(1024, 512),
             nn.ReLU(),
             nn.LayerNorm(512),
-            nn.Dropout(0.3),
+            nn.Dropout(0.1),
             
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.LayerNorm(256),
-            nn.Dropout(0.3),
+            nn.Dropout(0.1),
             
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.LayerNorm(128),
-            nn.Dropout(0.3),
+            nn.Dropout(0.1),
             
             nn.Linear(128, 64),
             nn.ReLU(),
