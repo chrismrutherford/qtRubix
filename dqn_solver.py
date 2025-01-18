@@ -10,18 +10,16 @@ from collections import deque
 from datetime import datetime
 
 class DQN(nn.Module):
-    def __init__(self, input_size=72, hidden_size=2048, output_size=18):  # Doubled hidden size to 2048
+    def __init__(self, input_size=72, hidden_size=4096, output_size=18):  # Doubled hidden size to 2048
         super(DQN, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.LayerNorm(hidden_size),
-            nn.Dropout(0.3),
             
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.LayerNorm(hidden_size),
-            nn.Dropout(0.3),
             
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
@@ -33,35 +31,13 @@ class DQN(nn.Module):
             nn.LayerNorm(hidden_size),
             nn.Dropout(0.3),
             
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size // 2),
-            nn.Dropout(0.3),
-            
-            nn.Linear(hidden_size // 2, hidden_size // 2),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size // 2),
-            nn.Dropout(0.3),
-            
-            nn.Linear(hidden_size // 2, hidden_size // 2),  # Additional half-size layer
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size // 2),
-            nn.Dropout(0.3),
-            
-            nn.Linear(hidden_size // 2, hidden_size // 4),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size // 4),
-            nn.Dropout(0.3),
-            
             nn.Linear(hidden_size // 4, hidden_size // 4),  # Additional quarter-size layer
             nn.ReLU(),
             nn.LayerNorm(hidden_size // 4),
-            nn.Dropout(0.3),
             
             nn.Linear(hidden_size // 4, hidden_size // 8),
             nn.ReLU(),
             nn.LayerNorm(hidden_size // 8),
-            nn.Dropout(0.3),
             
             nn.Linear(hidden_size // 8, output_size)
         )
