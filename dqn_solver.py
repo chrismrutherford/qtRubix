@@ -86,22 +86,23 @@ class RubiksCubeEnvironment:
         state = self.initial_state.copy()
         state.extend(current_state)
         
-        # Add historical states (padded if needed)
+        # Add historical states (padded with -1 for invalid entries)
         historical_states = list(self.state_history)
         while len(historical_states) < self.history_length:
-            historical_states.append([0] * 54)
+            historical_states.append([-1] * 54)  # Use -1 to indicate invalid/padding
         historical_data = []
         for past_state in historical_states[:self.history_length]:
             historical_data.extend(past_state)
 
-        # Add move history as one-hot vectors (padded if needed)
+        # Add move history as one-hot vectors (padded with -1)
         move_history = list(self.move_history)
         while len(move_history) < self.history_length:
             move_history.append(None)
         move_data = []
         for move in move_history[:self.history_length]:
-            move_encoding = [0] * len(self.action_space)
+            move_encoding = [-1] * len(self.action_space)  # Initialize with -1
             if move is not None:
+                move_encoding = [0] * len(self.action_space)  # Reset to 0s for valid moves
                 move_encoding[self.action_space.index(move)] = 1
             move_data.extend(move_encoding)
 
@@ -157,6 +158,12 @@ class RubiksCubeEnvironment:
         
         # Check if solved
         done = new_score == 100
+        
+        # Clear history if episode is done
+        if done:
+            self.state_history.clear()
+            self.move_history.clear()
+            self.reward_history.clear()
         
         return new_state, reward, done
 
