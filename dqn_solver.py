@@ -11,45 +11,34 @@ from collections import deque
 from datetime import datetime
 
 class DQN(nn.Module):
-    def __init__(self, history_length=16, hidden_size=512, output_size=18):
+    def __init__(self, history_length=4, hidden_size=512, output_size=18):
         # Calculate input size based on history length
         # Initial state (54) + current state (54) + past states (54 * history_length) + move history (18 * history_length)
         input_size = 54 + 54 + (54 * history_length) + (18 * history_length)
         super(DQN, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_size, hidden_size),
+            nn.Linear(input_size, 512),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size),
-            #nn.Dropout(0.3),
+            nn.LayerNorm(512),
+            nn.Dropout(0.2),
             
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size),
-            #nn.Dropout(0.3),
+            nn.LayerNorm(256),
+            nn.Dropout(0.2),
             
-            nn.Linear(hidden_size, hidden_size // 2),
+            nn.Linear(256, 128),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size // 2),
-            #nn.Dropout(0.3),
+            nn.LayerNorm(128),
             
-            nn.Linear(hidden_size // 2, hidden_size // 4),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size // 4),
-            #nn.Dropout(0.3),
-            
-            nn.Linear(hidden_size // 4, hidden_size // 8),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size // 8),
-            #nn.Dropout(0.3),
-            
-            nn.Linear(hidden_size // 8, output_size)
+            nn.Linear(128, output_size)
         )
         
     def forward(self, x):
         return self.network(x)
 
 class RubiksCubeEnvironment:
-    def __init__(self, cube, history_length=16):
+    def __init__(self, cube, history_length=4):
         self.cube = cube
         self.history_length = history_length
         self.initial_state = None
@@ -203,11 +192,11 @@ class RubiksCubeSolver:
         # Then try to load existing model if it exists
         self.load_model('rubiks_model.pth')
         self.memory = deque(maxlen=10000)  # Store 10000 states in memory
-        self.batch_size = 8    # Reduced batch size
-        self.gamma = 0.95  # Slightly reduced discount factor
+        self.batch_size = 32   # Increased batch size
+        self.gamma = 0.99      # Higher discount factor
         self.epsilon = 1.0
-        self.epsilon_min = 0.1  # Increased minimum exploration
-        self.epsilon_decay = 0.995  # Slower decay for better exploration
+        self.epsilon_min = 0.05  # Lower minimum exploration
+        self.epsilon_decay = 0.997  # Slightly faster decay
         self.target_update = 10
         self.training = False
         
