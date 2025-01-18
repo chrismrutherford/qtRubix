@@ -17,7 +17,12 @@ class DQN(nn.Module):
         input_size = 54 + 54 + (54 * history_length) + (18 * history_length)
         super(DQN, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_size, 512),
+            nn.Linear(input_size, 1024),
+            nn.ReLU(),
+            nn.LayerNorm(1024),
+            nn.Dropout(0.2),
+            
+            nn.Linear(1024, 512),
             nn.ReLU(),
             nn.LayerNorm(512),
             nn.Dropout(0.2),
@@ -30,8 +35,13 @@ class DQN(nn.Module):
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.LayerNorm(128),
+            nn.Dropout(0.2),
             
-            nn.Linear(128, output_size)
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.LayerNorm(64),
+            
+            nn.Linear(64, output_size)
         )
         
     def forward(self, x):
@@ -206,7 +216,7 @@ class RubiksCubeSolver:
         # Then try to load existing model if it exists
         self.load_model('rubiks_model.pth')
         self.memory = deque(maxlen=10000)  # Store 10000 states in memory
-        self.batch_size = 32   # Increased batch size
+        self.batch_size = 128   # Increased batch size
         self.gamma = 0.99      # Higher discount factor
         self.epsilon = 1.0
         self.epsilon_min = 0.05  # Lower minimum exploration
@@ -282,7 +292,9 @@ class RubiksCubeSolver:
         next_q_values = self.target_model(next_states).max(1)[0].detach()
         target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
         
-        loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
+        # Add constant 0.1 loss to encourage exploration
+        mse_loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
+        loss = mse_loss + 0.1
         
         self.optimizer.zero_grad()
         loss.backward()
