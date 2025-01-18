@@ -11,7 +11,7 @@ from collections import deque
 from datetime import datetime
 
 class DQN(nn.Module):
-    def __init__(self, history_length=4, hidden_size=512, output_size=18):
+    def __init__(self, history_length=16, hidden_size=512, output_size=18):
         # Calculate input size based on history length
         # Current state (54) + past states (54 * history_length) + move history (18 * history_length)
         input_size = 54 + (54 * history_length) + (18 * history_length)
@@ -49,7 +49,7 @@ class DQN(nn.Module):
         return self.network(x)
 
 class RubiksCubeEnvironment:
-    def __init__(self, cube, history_length=4):
+    def __init__(self, cube, history_length=16):
         self.cube = cube
         self.history_length = history_length
         self.action_space = [
@@ -196,7 +196,7 @@ class RubiksCubeSolver:
         # Then try to load existing model if it exists
         self.load_model('rubiks_model.pth')
         self.memory = deque(maxlen=1000)  # Store 1000 states in memory
-        self.batch_size = 128  # Increased batch size for better learning
+        self.batch_size = 8    # Reduced batch size
         self.gamma = 0.95  # Slightly reduced discount factor
         self.epsilon = 1.0
         self.epsilon_min = 0.1  # Increased minimum exploration
