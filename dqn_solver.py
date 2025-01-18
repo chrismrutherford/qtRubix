@@ -10,7 +10,7 @@ from collections import deque
 from datetime import datetime
 
 class DQN(nn.Module):
-    def __init__(self, input_size=54, hidden_size=256, output_size=18):
+    def __init__(self, input_size=72, hidden_size=256, output_size=18):  # 54 cube state + 18 one-hot move
         super(DQN, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
@@ -38,13 +38,22 @@ class RubiksCubeEnvironment:
             'white': 0, 'yellow': 1, 'red': 2,
             'orange': 3, 'blue': 4, 'green': 5
         }
+        self.last_move = None  # Track the last move made
         
     def get_state(self):
         state = []
+        # Current cube state (54 values)
         for face in ['F', 'B', 'U', 'D', 'L', 'R']:
             for row in self.cube.faces[face]:
                 for color in row:
                     state.append(self.color_map[color])
+        
+        # Add last move as one-hot encoded vector (18 values)
+        last_move_encoding = [0] * len(self.action_space)
+        if self.last_move is not None:
+            last_move_encoding[self.action_space.index(self.last_move)] = 1
+        state.extend(last_move_encoding)
+        
         return np.array(state, dtype=np.float32)
     
     def step(self, action, ui_callback=None):
@@ -53,6 +62,7 @@ class RubiksCubeEnvironment:
         
         # Perform move
         move = self.action_space[action]
+        self.last_move = move  # Store the move being made
         if ui_callback:
             ui_callback()
         if move[-1] == "'":  # Counterclockwise move
