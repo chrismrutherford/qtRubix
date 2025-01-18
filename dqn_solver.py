@@ -86,29 +86,27 @@ class RubiksCubeEnvironment:
         state = self.initial_state.copy()
         state.extend(current_state)
         
-        # Add historical states
+        # Add historical states (padded if needed)
+        historical_states = list(self.state_history)
+        while len(historical_states) < self.history_length:
+            historical_states.append([0] * 54)
         historical_data = []
-        for past_state in self.state_history:
+        for past_state in historical_states[:self.history_length]:
             historical_data.extend(past_state)
-        
-        # Pad with zeros if we don't have enough history
-        while len(historical_data) < (54 * self.history_length):
-            historical_data.extend([0] * 54)
 
-        # Add move history as one-hot vectors
+        # Add move history as one-hot vectors (padded if needed)
+        move_history = list(self.move_history)
+        while len(move_history) < self.history_length:
+            move_history.append(None)
         move_data = []
-        for move in self.move_history:
+        for move in move_history[:self.history_length]:
             move_encoding = [0] * len(self.action_space)
             if move is not None:
                 move_encoding[self.action_space.index(move)] = 1
             move_data.extend(move_encoding)
-            
-        # Pad move history if needed
-        while len(move_data) < (len(self.action_space) * self.history_length):
-            move_data.extend([0] * len(self.action_space))
 
-        # Combine all data
-        state = current_state + historical_data + move_data
+        # Combine all data: initial state + current state + historical states + move history
+        state = self.initial_state + current_state + historical_data + move_data
         return np.array(state, dtype=np.float32)
     
     def step(self, action, ui_callback=None):
