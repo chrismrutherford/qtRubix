@@ -69,7 +69,8 @@ class RubiksCubeEnvironment:
         """Reset the environment state"""
         self.total_reward = 0
         self.step_count = 0
-        self.initial_state = None
+        # Store current state as initial state
+        self.initial_state = self.get_current_state()
         self.state_history.clear()
         self.move_history.clear()
         self.reward_history.clear()
@@ -251,6 +252,10 @@ class RubiksCubeSolver:
             print(f"\nReplay Buffer Size: {len(self.memory)}")
             print(f"Current Epsilon: {self.epsilon:.3f}")
         
+        # Skip replay if initial state is not set
+        if self.env.initial_state is None:
+            return
+            
         batch = random.sample(self.memory, self.batch_size)
         
         # Convert numpy arrays to tensors and move to device
