@@ -68,7 +68,7 @@ class RubiksCubeEnvironment:
         return np.array(self.get_current_state(), dtype=np.float32)
     
     def step(self, action, ui_callback=None):
-        # Store score before move
+        # Calculate score before move
         previous_score = (self.cube.get_basic_score() + self.cube.get_advanced_score()) / 2
         
         # Store current state in history before making move
@@ -109,12 +109,29 @@ class RubiksCubeEnvironment:
         # Get new state
         new_state = self.get_state()
         
-        # Calculate reward as average of both scores, normalized to 0-1
+        # Calculate new score and reward
         new_score = (self.cube.get_basic_score() + self.cube.get_advanced_score()) / 2
-        reward = new_score / 100  # Convert percentage to 0-1 scale
         
+        # Calculate reward based on score improvement
+        score_change = new_score - previous_score
+        
+        # Base reward is the score change, normalized to [-1, 1]
+        reward = score_change / 100.0
+        
+        # Add penalties and bonuses:
+        if score_change < 0:
+            # Penalize moves that make things worse
+            reward *= 2.0  # Double the negative reward
+        elif score_change == 0:
+            # Small penalty for moves that don't change anything
+            reward = -0.1
+            
         # Check if solved
         done = new_score == 100
+        
+        # Give large bonus reward for solving
+        if done:
+            reward = 10.0
         
         # Clear history if episode is done
         if done:
