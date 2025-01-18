@@ -327,13 +327,9 @@ class RubiksCubeSolver:
         
         self.total_attempts += 1
         
-        # Calculate final reward based on cube score with more gradual scaling
+        # Calculate final reward based on cube score
         final_score = (self.env.cube.get_basic_score() + self.env.cube.get_advanced_score()) / 2
-        # Scale rewards more gradually starting from 50%
-        if final_score >= 50:
-            total_reward = (final_score - 50) / 50  # Scales 50-100% to 0-1
-        else:
-            total_reward = 0
+        total_reward = final_score / 100  # Linear scaling from 0-100% to 0-1
         
         if show_logs:  # Only show periodic status updates
             success_rate = (self.successful_solves / self.total_attempts) * 100
