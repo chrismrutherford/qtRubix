@@ -11,7 +11,10 @@ from collections import deque
 from datetime import datetime
 
 class DQN(nn.Module):
-    def __init__(self, input_size=72, hidden_size=512, output_size=18):
+    def __init__(self, history_length=4, hidden_size=512, output_size=18):
+        # Calculate input size based on history length
+        # Current state (54) + past states (54 * history_length) + move history (18 * history_length)
+        input_size = 54 + (54 * history_length) + (18 * history_length)
         super(DQN, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
@@ -46,8 +49,9 @@ class DQN(nn.Module):
         return self.network(x)
 
 class RubiksCubeEnvironment:
-    def __init__(self, cube):
+    def __init__(self, cube, history_length=4):
         self.cube = cube
+        self.history_length = history_length
         self.action_space = [
             'F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S',
             "F'", "B'", "U'", "D'", "L'", "R'", "M'", "E'", "S'"
@@ -56,31 +60,58 @@ class RubiksCubeEnvironment:
             'white': 0, 'yellow': 1, 'red': 2,
             'orange': 3, 'blue': 4, 'green': 5
         }
-        self.last_move = None  # Track the last move made
+        self.state_history = deque(maxlen=history_length)
+        self.move_history = deque(maxlen=history_length)
+        self.reward_history = deque(maxlen=history_length)
         
-    def get_state(self):
+    def get_current_state(self):
+        """Get the current cube state without history"""
         state = []
-        # Current cube state (54 values)
         for face in ['F', 'B', 'U', 'D', 'L', 'R']:
             for row in self.cube.faces[face]:
                 for color in row:
                     state.append(self.color_map[color])
+        return state
+
+    def get_state(self):
+        """Get complete state including history"""
+        current_state = self.get_current_state()
         
-        # Add last move as one-hot encoded vector (18 values)
-        last_move_encoding = [0] * len(self.action_space)
-        if self.last_move is not None:
-            last_move_encoding[self.action_space.index(self.last_move)] = 1
-        state.extend(last_move_encoding)
+        # Add historical states
+        historical_data = []
+        for past_state in self.state_history:
+            historical_data.extend(past_state)
         
+        # Pad with zeros if we don't have enough history
+        while len(historical_data) < (54 * self.history_length):
+            historical_data.extend([0] * 54)
+
+        # Add move history as one-hot vectors
+        move_data = []
+        for move in self.move_history:
+            move_encoding = [0] * len(self.action_space)
+            if move is not None:
+                move_encoding[self.action_space.index(move)] = 1
+            move_data.extend(move_encoding)
+            
+        # Pad move history if needed
+        while len(move_data) < (len(self.action_space) * self.history_length):
+            move_data.extend([0] * len(self.action_space))
+
+        # Combine all data
+        state = current_state + historical_data + move_data
         return np.array(state, dtype=np.float32)
     
     def step(self, action, ui_callback=None):
         # Store score before move
         previous_score = (self.cube.get_basic_score() + self.cube.get_advanced_score()) / 2
         
+        # Store current state in history before making move
+        self.state_history.append(self.get_current_state())
+        
         # Perform move
         move = self.action_space[action]
-        self.last_move = move  # Store the move being made
+        self.move_history.append(move)
         if ui_callback:
             ui_callback()
         if move[-1] == "'":  # Counterclockwise move
