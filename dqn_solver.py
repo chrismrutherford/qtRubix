@@ -195,7 +195,7 @@ class RubiksCubeSolver:
         
         # Then try to load existing model if it exists
         self.load_model('rubiks_model.pth')
-        self.memory = deque(maxlen=1000)  # Store 1000 states in memory
+        self.memory = deque(maxlen=10000)  # Store 10000 states in memory
         self.batch_size = 8    # Reduced batch size
         self.gamma = 0.95  # Slightly reduced discount factor
         self.epsilon = 1.0
