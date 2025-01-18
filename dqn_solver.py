@@ -12,8 +12,8 @@ from datetime import datetime
 
 class DQN(nn.Module):
     def __init__(self, history_length=4, hidden_size=512, output_size=18):
-        # Simplified input: just current state (54)
-        input_size = 54
+        # Input: current state (54) + initial state (54) = 108
+        input_size = 108
         super(DQN, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(input_size, 256),
@@ -23,8 +23,10 @@ class DQN(nn.Module):
             nn.Linear(128, output_size)
         )
         
-    def forward(self, x):
-        return self.network(x)
+    def forward(self, current_state, initial_state):
+        # Concatenate current and initial states
+        combined_state = torch.cat((current_state, initial_state), dim=1)
+        return self.network(combined_state)
 
 class RubiksCubeEnvironment:
     def __init__(self, cube, history_length=4):
@@ -224,9 +226,10 @@ class RubiksCubeSolver:
         if random.random() < self.epsilon:
             return random.randint(0, 17)
         
-        state = torch.FloatTensor(state).view(1, -1).to(self.device)
+        current_state = torch.FloatTensor(state).view(1, -1).to(self.device)
+        initial_state = torch.FloatTensor(self.env.initial_state).view(1, -1).to(self.device)
         with torch.no_grad():
-            q_values = self.model(state)
+            q_values = self.model(current_state, initial_state)
         return q_values.argmax().item()
     
     def replay(self):
@@ -240,7 +243,8 @@ class RubiksCubeSolver:
         batch = random.sample(self.memory, self.batch_size)
         
         # Convert numpy arrays to tensors and move to device
-        states = torch.FloatTensor(np.vstack([entry['state'] for entry in batch])).to(self.device)
+        current_states = torch.FloatTensor(np.vstack([entry['state'] for entry in batch])).to(self.device)
+        initial_states = torch.FloatTensor(np.vstack([self.env.initial_state for _ in batch])).to(self.device)
         actions = torch.LongTensor([entry['action'] for entry in batch]).to(self.device)
         rewards = torch.FloatTensor([entry['reward'] for entry in batch]).to(self.device)
         next_states = torch.FloatTensor(np.vstack([entry['next_state'] for entry in batch])).to(self.device)
@@ -252,8 +256,8 @@ class RubiksCubeSolver:
         next_states = next_states.to(self.device)
         dones = dones.to(self.device)
         
-        current_q_values = self.model(states).gather(1, actions.unsqueeze(1))
-        next_q_values = self.target_model(next_states).max(1)[0].detach()
+        current_q_values = self.model(current_states, initial_states).gather(1, actions.unsqueeze(1))
+        next_q_values = self.target_model(next_states, initial_states).max(1)[0].detach()
         target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
         
         loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
