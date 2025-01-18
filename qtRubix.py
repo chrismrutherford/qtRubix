@@ -159,6 +159,26 @@ class RubiksCube:
             self.faces['D'][1][2-i] = self.faces['R'][i][1]
             self.faces['R'][i][1] = temp
 
+    def rotate_face_counterclockwise(self, face):
+        # Rotate face counterclockwise by doing 3 clockwise rotations
+        for _ in range(3):
+            self.rotate_face_clockwise(face)
+
+    def rotate_M_ccw(self):
+        # Counterclockwise middle layer rotation
+        for _ in range(3):
+            self.rotate_M()
+
+    def rotate_E_ccw(self):
+        # Counterclockwise equatorial layer rotation
+        for _ in range(3):
+            self.rotate_E()
+
+    def rotate_S_ccw(self):
+        # Counterclockwise standing layer rotation
+        for _ in range(3):
+            self.rotate_S()
+
 class CubeFaceView(QWidget):
     def __init__(self, face_name):
         super().__init__()
@@ -310,17 +330,31 @@ class MainWindow(QMainWindow):
         layout.addLayout(faces_layout)
 
         # Create move buttons
-        moves = ['F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S']
-        buttons_layout = QHBoxLayout()
+        moves_layout = QVBoxLayout()
         
-        for move in moves:
+        # Clockwise moves
+        cw_moves = ['F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S']
+        cw_layout = QHBoxLayout()
+        for move in cw_moves:
             btn = QPushButton(move)
             btn.setFixedSize(40, 40)
             btn.clicked.connect(lambda checked, m=move: self.perform_move(m))
             btn.setToolTip(self.get_move_description(move))
-            buttons_layout.addWidget(btn)
+            cw_layout.addWidget(btn)
+        moves_layout.addLayout(cw_layout)
         
-        layout.addLayout(buttons_layout)
+        # Counterclockwise moves
+        ccw_moves = ["F'", "B'", "U'", "D'", "L'", "R'", "M'", "E'", "S'"]
+        ccw_layout = QHBoxLayout()
+        for move in ccw_moves:
+            btn = QPushButton(move)
+            btn.setFixedSize(40, 40)
+            btn.clicked.connect(lambda checked, m=move: self.perform_move(m))
+            btn.setToolTip(self.get_move_description(move))
+            ccw_layout.addWidget(btn)
+        moves_layout.addLayout(ccw_layout)
+        
+        layout.addLayout(moves_layout)
         
         # Update all views
         self.update_views()
@@ -336,6 +370,15 @@ class MainWindow(QMainWindow):
             'M': 'Rotate Middle layer (between L and R)',
             'E': 'Rotate Equatorial layer (between U and D)',
             'S': 'Rotate Standing layer (between F and B)',
+            "F'": 'Rotate Front face counterclockwise',
+            "B'": 'Rotate Back face counterclockwise',
+            "U'": 'Rotate Up face counterclockwise',
+            "D'": 'Rotate Down face counterclockwise',
+            "L'": 'Rotate Left face counterclockwise',
+            "R'": 'Rotate Right face counterclockwise',
+            "M'": 'Rotate Middle layer counterclockwise',
+            "E'": 'Rotate Equatorial layer counterclockwise',
+            "S'": 'Rotate Standing layer counterclockwise',
         }
         return descriptions.get(move, 'Perform move ' + move)
 
@@ -352,6 +395,19 @@ class MainWindow(QMainWindow):
             self.cube.rotate_E()
         elif move == 'S':
             self.cube.rotate_S()
+        # Counterclockwise moves
+        elif move == "U'":
+            self.cube.rotate_face_counterclockwise('D')
+        elif move == "D'":
+            self.cube.rotate_face_counterclockwise('U')
+        elif move[-1] == "'" and move[0] in ['F', 'B', 'L', 'R']:
+            self.cube.rotate_face_counterclockwise(move[0])
+        elif move == "M'":
+            self.cube.rotate_M_ccw()
+        elif move == "E'":
+            self.cube.rotate_E_ccw()
+        elif move == "S'":
+            self.cube.rotate_S_ccw()
         self.update_views()
 
     def update_views(self):
