@@ -668,6 +668,7 @@ class MainWindow(QMainWindow):
                     success_history.append(1)
                     current_success_rate = sum(success_history) / len(success_history) * 100
                     print(f"\nEpisode {episode + 1}")
+                    print(f"Current settings: max_scramble={self.max_scramble_steps.value()}, max_moves={self.max_moves.value()}")
                     print(f"Scramble moves: {scramble_steps} random moves")
                     print(f"Starting state: {scrambled_state}")
                     print(f"Solved in {step + 1} steps with moves: {[moves[a] for a in self.move_history]}")
@@ -692,6 +693,9 @@ class MainWindow(QMainWindow):
                     print(f"\nSuccess rate {recent_success_rate:.1f}% > 90%")
                     print(f"Increased max scramble to {new_max_scramble}")
                     print(f"Increased max moves to {new_max_moves}")
+                    # Save network on difficulty increase
+                    self.solver.save_model('rubiks_dqn.pth')
+                    print("Saved network checkpoint")
                     # Reset success history when increasing difficulty
                     success_history = []
             
@@ -836,6 +840,7 @@ def headless_train(min_scramble, max_scramble, max_moves, episodes):
                 success_history.append(1)
                 current_success_rate = sum(success_history[-window_size:]) / len(success_history[-window_size:]) * 100
                 print(f"\nEpisode {episode + 1}")
+                print(f"Current settings: max_scramble={max_scramble}, max_moves={max_moves}")
                 print(f"Scramble moves: {scramble_steps} random moves")
                 print(f"Starting state: {scrambled_state}")
                 print(f"Solved in {step + 1} steps with moves: {[moves[a] for a in move_history]}")
@@ -856,6 +861,8 @@ def headless_train(min_scramble, max_scramble, max_moves, episodes):
                 print(f"\nSuccess rate {recent_success_rate:.1f}% > 90%")
                 print(f"Increased max scramble to {max_scramble}")
                 print(f"Increased max moves to {max_moves}")
+                solver.save_model('rubiks_dqn.pth')
+                print("Saved network checkpoint")
                 success_history = []
                 
     solver.save_model('rubiks_dqn.pth')
