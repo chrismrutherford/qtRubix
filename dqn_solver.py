@@ -296,16 +296,27 @@ class RubiksCubeSolver:
             history = []
             if i < history_length - 1:
                 # Pad with copies of first state if not enough history
-                padding = [batch[0]['state']] * (history_length - i - 1)
+                padding = [np.concatenate([batch[0]['state'], self.env.initial_state, np.zeros(18)])] * (history_length - i - 1)
                 history.extend(padding)
-                history.extend([batch[j]['state'] for j in range(i + 1)])
+                for j in range(i + 1):
+                    state = batch[j]['state']
+                    combined = np.concatenate([state, self.env.initial_state, np.zeros(18)])
+                    history.append(combined)
             else:
                 # Use actual history if available
-                history = [batch[j]['state'] for j in range(i - history_length + 1, i + 1)]
+                for j in range(i - history_length + 1, i + 1):
+                    state = batch[j]['state']
+                    combined = np.concatenate([state, self.env.initial_state, np.zeros(18)])
+                    history.append(combined)
             state_histories.append(history)
             
-            # Create next state history by shifting window
-            next_history = history[1:] + [batch[i]['next_state']]
+            # Create next state history
+            next_history = []
+            for j in range(1, len(history)):
+                next_history.append(history[j])
+            next_state = batch[i]['next_state']
+            combined_next = np.concatenate([next_state, self.env.initial_state, np.zeros(18)])
+            next_history.append(combined_next)
             next_state_histories.append(next_history)
             
         # Convert to tensors
