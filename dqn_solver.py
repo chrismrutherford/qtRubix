@@ -15,36 +15,60 @@ class DQN(nn.Module):
         # Input: current state (54) + initial state (54) + last move (18) = 126
         input_size = 126
         super(DQN, self).__init__()
-        #self.network = nn.Sequential(
-        #    nn.Linear(input_size, 256),
-        #    nn.ReLU(),
-        #    nn.Linear(256, 128),
-        #    nn.ReLU(),
-        #    nn.Linear(128, output_size)
-        #)
+        
+        # LSTM for processing state sequences
+        self.lstm_hidden_size = 256
+        self.lstm = nn.LSTM(input_size, self.lstm_hidden_size, 
+                           num_layers=2, batch_first=True)
+        
+        # Main network combining LSTM output with current state
         self.network = nn.Sequential(
-            nn.Linear(126, 512),
+            nn.Linear(self.lstm_hidden_size + input_size, 512),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(512, 256),
-            nn.ReLU(), 
-            nn.Dropout(0.2),
-            nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, output_size)
+            nn.Dropout(0.2),
+            nn.Linear(256, output_size)
         )
         
-    def forward(self, current_state, initial_state, last_move=None):
-        # Create one-hot encoded move tensor if provided
+        # Initialize LSTM hidden state
+        self.hidden = None
+        
+    def init_hidden(self, batch_size, device):
+        return (torch.zeros(2, batch_size, self.lstm_hidden_size).to(device),
+                torch.zeros(2, batch_size, self.lstm_hidden_size).to(device))
+        
+    def forward(self, current_state, initial_state, last_move=None, state_history=None):
+        batch_size = current_state.size(0)
+        
+        # Create one-hot encoded move tensor
         if last_move is None:
-            move_tensor = torch.zeros(current_state.size(0), 18).to(current_state.device)
+            move_tensor = torch.zeros(batch_size, 18).to(current_state.device)
         else:
-            move_tensor = torch.zeros(current_state.size(0), 18).to(current_state.device)
+            move_tensor = torch.zeros(batch_size, 18).to(current_state.device)
             move_tensor.scatter_(1, last_move.unsqueeze(1), 1)
             
         # Concatenate current state, initial state and move
         combined_state = torch.cat((current_state, initial_state, move_tensor), dim=1)
-        return self.network(combined_state)
+        
+        # Process state history with LSTM if available
+        if state_history is not None:
+            if self.hidden is None or self.hidden[0].size(1) != batch_size:
+                self.hidden = self.init_hidden(batch_size, current_state.device)
+                
+            # Reshape history for LSTM
+            lstm_out, self.hidden = self.lstm(state_history, self.hidden)
+            lstm_out = lstm_out[:, -1, :]  # Take last LSTM output
+            
+            # Combine LSTM output with current state
+            network_input = torch.cat((lstm_out, combined_state), dim=1)
+        else:
+            # If no history, initialize hidden state and use only current state
+            self.hidden = self.init_hidden(batch_size, current_state.device)
+            network_input = combined_state
+            
+        return self.network(network_input)
 
 class RubiksCubeEnvironment:
     def __init__(self, cube, history_length=4):
@@ -253,17 +277,36 @@ class RubiksCubeSolver:
         if len(self.memory) < self.batch_size:
             return
             
-        if self.total_attempts % 1000 == 0:  # Print debug info every 1000 attempts
+        if self.total_attempts % 1000 == 0:
             print(f"\nReplay Buffer Size: {len(self.memory)}")
             print(f"Current Epsilon: {self.epsilon:.3f}")
         
-        # Skip replay if initial state is not set
         if self.env.initial_state is None:
             return
             
         batch = random.sample(self.memory, self.batch_size)
         
-        # Convert numpy arrays to tensors and move to device
+        # Prepare state history sequences
+        history_length = 4  # Use last 4 states
+        state_histories = []
+        next_state_histories = []
+        
+        for i in range(len(batch)):
+            # Get indices for current sequence
+            end_idx = self.memory.index(batch[i])
+            start_idx = max(0, end_idx - history_length + 1)
+            
+            # Collect state history
+            history = [self.memory[j]['state'] for j in range(start_idx, end_idx + 1)]
+            while len(history) < history_length:
+                history.insert(0, history[0])  # Pad with initial state
+            state_histories.append(history)
+            
+            # Collect next state history
+            next_history = history[1:] + [batch[i]['next_state']]
+            next_state_histories.append(next_history)
+            
+        # Convert to tensors
         current_states = torch.FloatTensor(np.vstack([entry['state'] for entry in batch])).to(self.device)
         initial_states = torch.FloatTensor(np.vstack([self.env.initial_state for _ in batch])).to(self.device)
         actions = torch.LongTensor([entry['action'] for entry in batch]).to(self.device)
@@ -271,14 +314,25 @@ class RubiksCubeSolver:
         next_states = torch.FloatTensor(np.vstack([entry['next_state'] for entry in batch])).to(self.device)
         dones = torch.FloatTensor([entry['done'] for entry in batch]).to(self.device)
         
-        # States and next_states are already tensors on device from earlier vstack
-        actions = actions.to(self.device)
-        rewards = rewards.to(self.device)
-        next_states = next_states.to(self.device)
-        dones = dones.to(self.device)
+        # Convert histories to tensors
+        state_histories = torch.FloatTensor(state_histories).to(self.device)
+        next_state_histories = torch.FloatTensor(next_state_histories).to(self.device)
         
-        current_q_values = self.model(current_states, initial_states).gather(1, actions.unsqueeze(1))
-        next_q_values = self.target_model(next_states, initial_states).max(1)[0].detach()
+        # Get Q values using state histories
+        current_q_values = self.model(
+            current_states, 
+            initial_states, 
+            None,  # last_move
+            state_histories
+        ).gather(1, actions.unsqueeze(1))
+        
+        next_q_values = self.target_model(
+            next_states,
+            initial_states,
+            None,  # last_move 
+            next_state_histories
+        ).max(1)[0].detach()
+        
         target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
         
         loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
