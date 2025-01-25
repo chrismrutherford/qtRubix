@@ -759,8 +759,106 @@ class MainWindow(QMainWindow):
                 # Small delay to allow UI updates
                 QApplication.processEvents()
 
+def train_headless(min_scramble, max_scramble, max_moves, episodes):
+    """Run training in headless mode without GUI"""
+    cube = RubiksCube()
+    solver = RubiksSolver()
+    try:
+        solver.load_model('rubiks_dqn.pth')
+        print("Loaded existing DQN model")
+    except:
+        print("Starting with new DQN model")
+    
+    success_history = []
+    window_size = 100
+    batch_size = 1280
+    
+    print(f"\nStarting headless training:")
+    print(f"Min scramble: {min_scramble}")
+    print(f"Max scramble: {max_scramble}")
+    print(f"Max moves: {max_moves}")
+    print(f"Episodes: {episodes}\n")
+    
+    for episode in range(episodes):
+        cube.reset()
+        
+        # Scramble
+        scramble_steps = random.randint(min_scramble, max_scramble)
+        for _ in range(scramble_steps):
+            move = random.choice(['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 'D1', 'D3', 'L1', 'L3', 'R1', 'R3'])
+            face = move[0]
+            clockwise = move[1] == '1'
+            cube.apply_move(face, clockwise)
+        
+        state = solver.get_state(cube)
+        total_reward = 0
+        move_history = []
+        
+        for step in range(max_moves):
+            action = solver.get_action(state)
+            old_score = cube.get_basic_score()
+            
+            # Apply action
+            moves = ['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 'D1', 'D3', 'L1', 'L3', 'R1', 'R3']
+            move = moves[action]
+            face = move[0]
+            clockwise = move[1] == '1'
+            cube.apply_move(face, clockwise)
+            
+            new_score = cube.get_basic_score()
+            reward = (new_score - old_score) / 20.0
+            if new_score == 100:
+                reward += 5.0
+            elif new_score < old_score:
+                reward -= 0.1
+            reward -= 0.01
+            
+            total_reward += reward
+            
+            next_state = solver.get_state(cube)
+            done = new_score == 100
+            
+            move_history.append(action)
+            solver.remember(state, action, reward, next_state, done)
+            
+            if len(solver.memory) >= batch_size:
+                solver.replay(batch_size)
+                
+            state = next_state
+            
+            if done:
+                success_history.append(1)
+                current_success_rate = sum(success_history[-window_size:]) / len(success_history[-window_size:]) * 100
+                print(f"Episode {episode + 1}: Solved in {step + 1} steps, Score: {new_score}%, Success rate: {current_success_rate:.1f}%")
+                break
+        
+        if not done:
+            success_history.append(0)
+            if len(success_history) >= window_size:
+                current_success_rate = sum(success_history[-window_size:]) / len(success_history[-window_size:]) * 100
+                print(f"Episode {episode + 1}: Failed to solve, Success rate: {current_success_rate:.1f}%")
+    
+    # Save final model
+    solver.save_model('rubiks_dqn.pth')
+    final_success_rate = sum(success_history[-window_size:]) / len(success_history[-window_size:]) * 100
+    print(f"\nTraining complete! Final success rate: {final_success_rate:.1f}%")
+
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Rubik\'s Cube DQN Trainer')
+    parser.add_argument('--headless', action='store_true', help='Run in headless mode')
+    parser.add_argument('--min-scramble', type=int, default=1, help='Minimum scramble moves')
+    parser.add_argument('--max-scramble', type=int, default=3, help='Maximum scramble moves')
+    parser.add_argument('--max-moves', type=int, default=50, help='Maximum solution moves')
+    parser.add_argument('--episodes', type=int, default=1000, help='Number of training episodes')
+    
+    args = parser.parse_args()
+    
+    if args.headless:
+        train_headless(args.min_scramble, args.max_scramble, args.max_moves, args.episodes)
+    else:
+        app = QApplication(sys.argv)
+        window = MainWindow()
+        window.show()
+        sys.exit(app.exec_())
