@@ -1,58 +1,47 @@
-Deep Q-Network (DQN) for Solving Rubik's Cube
+# Deep Q-Network (DQN) for Solving Rubik's Cube
 
-This document provides a detailed explanation of the Deep Q-Network (DQN) implementation for solving a Rubik's Cube. The code combines concepts from reinforcement learning (RL), deep learning, and PyQt5 for visualization..
-Table of Contents
+This document provides a detailed explanation of the Deep Q-Network (DQN) implementation for solving a Rubik's Cube. The code combines concepts from reinforcement learning (RL), deep learning, and PyQt5 for visualization. The goal is to guide undergraduate students who are familiar with Artificial Neural Networks (ANNs) but not necessarily with DQNs.
 
-    Introduction to DQN
+---
 
-    Key Components of the DQN
+## Table of Contents
+1. **Introduction to DQN**
+2. **Key Components of the DQN**
+   - Neural Network Architecture
+   - Experience Replay
+   - Epsilon-Greedy Strategy
+   - Target Network
+   - Reward Calculation
+3. **Rubik's Cube Environment**
+   - State Representation
+   - Action Space
+   - Reward Function
+4. **Training Process**
+   - Exploration vs. Exploitation
+   - Experience Replay and Training
+   - Target Network Updates
+5. **Visualization and Interaction**
+   - PyQt5 Interface
+   - Cube Visualization
+6. **Conclusion**
 
-        Neural Network Architecture
+---
 
-        Experience Replay
+## 1. Introduction to DQN
 
-        Epsilon-Greedy Strategy
-
-        Target Network
-
-        Reward Calculation
-
-    Rubik's Cube Environment
-
-        State Representation
-
-        Action Space
-
-        Reward Function
-
-    Training Process
-
-        Exploration vs. Exploitation
-
-        Experience Replay and Training
-
-        Target Network Updates
-
-    Visualization and Interaction
-
-        PyQt5 Interface
-
-        Cube Visualization
-
-    Conclusion
-
-1. Introduction to DQN
-
-A Deep Q-Network (DQN) is a reinforcement learning algorithm that combines Q-learning with deep neural networks. It is used to solve problems where the state space is large or continuous, making traditional Q-learning infeasible. The key idea is to use a neural network to approximate the Q-value function, which estimates the expected cumulative reward for taking an action in a given state.
+A **Deep Q-Network (DQN)** is a reinforcement learning algorithm that combines Q-learning with deep neural networks. It is used to solve problems where the state space is large or continuous, making traditional Q-learning infeasible. The key idea is to use a neural network to approximate the Q-value function, which estimates the expected cumulative reward for taking an action in a given state.
 
 In this implementation, the DQN is trained to solve a Rubik's Cube by learning a policy that maps cube states to actions (moves) that maximize the cumulative reward.
-2. Key Components of the DQN
-2.1 Neural Network Architecture
 
-The neural network used in the DQN is defined in the DQN class:
-python
-Copy
+---
 
+## 2. Key Components of the DQN
+
+### 2.1 Neural Network Architecture
+
+The neural network used in the DQN is defined in the `DQN` class:
+
+```python
 class DQN(nn.Module):
     def __init__(self, input_size, output_size):
         super(DQN, self).__init__()
@@ -69,6 +58,7 @@ class DQN(nn.Module):
         
     def forward(self, x):
         return self.network(x)
+```
 
     Input Size: The input size corresponds to the state representation of the Rubik's Cube. Each face of the cube has 9 stickers, and each sticker can be one of 6 colors. The state is one-hot encoded, resulting in an input size of 6 * 9 * 6 = 324.
 
