@@ -57,9 +57,16 @@ class DQN(nn.Module):
             if self.hidden is None or self.hidden[0].size(1) != batch_size:
                 self.hidden = self.init_hidden(batch_size, current_state.device)
                 
+            # Detach hidden states to prevent inplace modification issues
+            if self.hidden is not None:
+                hidden_states = (self.hidden[0].detach(), self.hidden[1].detach())
+            else:
+                hidden_states = self.hidden
+                
             # Reshape history for LSTM
-            lstm_out, self.hidden = self.lstm(state_history, self.hidden)
-            lstm_out = lstm_out[:, -1, :]  # Take last LSTM output
+            lstm_out, new_hidden = self.lstm(state_history, hidden_states)
+            self.hidden = (new_hidden[0].detach(), new_hidden[1].detach())
+            lstm_out = lstm_out[:, -1, :].clone()  # Clone to prevent inplace issues
             
             # Combine LSTM output with current state
             network_input = torch.cat((lstm_out, combined_state), dim=1)
@@ -351,7 +358,7 @@ class RubiksCubeSolver:
         loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
         
         self.optimizer.zero_grad()
-        loss.backward(retain_graph=True)  # Retain computation graph for LSTM
+        loss.backward()  # Remove retain_graph since we're detaching states
         self.optimizer.step()
         
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
