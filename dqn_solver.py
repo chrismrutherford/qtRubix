@@ -128,24 +128,18 @@ class RubiksCubeEnvironment:
         # Calculate reward based on score improvement
         score_change = new_score - previous_score
         
-        # Base reward is the score change, normalized to [-1, 1]
-        reward = score_change / 100.0
-        
-        # Add penalties and bonuses:
+        reward = score_change / 50.0  # Increased from 100 to make rewards more pronounced
+
         if score_change < 0:
-            # Penalize moves that make things worse
-            reward *= 2.0  # Double the negative reward
+            reward *= 1.5  # Reduced penalty from 2.0
         elif score_change == 0:
-            # Small penalty for moves that don't change anything
-            reward = -0.1
-            
-        # Check if solved
+            reward = -0.05  # Reduced penalty for neutral moves
+
         done = new_score == 100
-        
-        # Give large bonus reward for solving
+
         if done:
-            reward = 10.0
-        
+            reward = 20.0  # Increased solve reward from 10.0
+                
         # Clear history if episode is done
         if done:
             self.state_history.clear()
