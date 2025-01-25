@@ -351,7 +351,7 @@ class RubiksCubeSolver:
         loss = nn.MSELoss()(current_q_values.squeeze(), target_q_values)
         
         self.optimizer.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=True)  # Retain computation graph for LSTM
         self.optimizer.step()
         
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
