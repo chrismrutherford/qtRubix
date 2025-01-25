@@ -276,8 +276,15 @@ class RubiksCubeSolver:
         current_state = torch.FloatTensor(state).view(1, -1).to(self.device)
         initial_state = torch.FloatTensor(self.env.initial_state).view(1, -1).to(self.device)
         last_move = torch.LongTensor([self.env.last_move]).to(self.device) if self.env.last_move is not None else None
+        
+        # Create dummy state history for single state prediction
+        state_history = torch.FloatTensor([
+            np.concatenate([state, self.env.initial_state, np.zeros(18)])
+            for _ in range(4)  # Use history length of 4
+        ]).unsqueeze(0).to(self.device)  # Add batch dimension
+        
         with torch.no_grad():
-            q_values = self.model(current_state, initial_state, last_move)
+            q_values = self.model(current_state, initial_state, last_move, state_history)
         return q_values.argmax().item()
     
     def replay(self):
