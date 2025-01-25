@@ -9,14 +9,14 @@ class DQN(nn.Module):
     def __init__(self, input_size, output_size):
         super(DQN, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_size, 256),
-            nn.LayerNorm(256),
+            nn.Linear(input_size, 2560),
+            nn.LayerNorm(2560),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(256, 128),
-            nn.LayerNorm(128),
+            nn.Linear(2560, 1280),
+            nn.LayerNorm(1280),
             nn.ReLU(),
-            nn.Linear(128, output_size)
+            nn.Linear(1280, output_size)
         )
         
     def forward(self, x):
@@ -88,7 +88,7 @@ class RubiksSolver:
         
     def replay(self, batch_size):
         if len(self.memory) < batch_size:
-            return
+            return  # Wait until we have enough samples for the larger batch
             
         batch = random.sample(self.memory, batch_size)
         states = torch.stack([x[0] for x in batch])

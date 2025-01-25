@@ -600,10 +600,13 @@ class MainWindow(QMainWindow):
     def train_dqn(self):
         """Train the DQN solver"""
         episodes = self.train_episodes.value()
-        batch_size = 128  # Larger batch size
+        batch_size = 1280  # 10x larger batch size
         success_history = []
         progress = QProgressDialog("Training DQN...", "Cancel", 0, episodes, self)
         progress.setWindowModality(Qt.WindowModal)
+        
+        # Track recent success rate
+        window_size = 100  # Look at last 100 episodes
         
         for episode in range(episodes):
             if progress.wasCanceled():
@@ -677,6 +680,20 @@ class MainWindow(QMainWindow):
             if not done:
                 success_history.append(0)
             
+            # Check success rate and increase max scramble if doing well
+            if len(success_history) >= window_size:
+                recent_success_rate = sum(success_history[-window_size:]) / window_size * 100
+                if recent_success_rate > 90:
+                    # Increase max scramble and max moves in UI
+                    new_max_scramble = self.max_scramble_steps.value() + 1
+                    new_max_moves = self.max_moves.value() + 1
+                    self.max_scramble_steps.setValue(new_max_scramble)
+                    self.max_moves.setValue(new_max_moves)
+                    print(f"\nSuccess rate {recent_success_rate:.1f}% > 90%")
+                    print(f"Increased max scramble to {new_max_scramble}")
+                    print(f"Increased max moves to {new_max_moves}")
+                    # Reset success history when increasing difficulty
+                    success_history = []
             
             progress.setValue(episode + 1)
             QApplication.processEvents()
