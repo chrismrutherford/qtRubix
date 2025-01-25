@@ -15,9 +15,20 @@ class DQN(nn.Module):
         # Input: current state (54) + initial state (54) + last move (18) = 126
         input_size = 126
         super(DQN, self).__init__()
+        #self.network = nn.Sequential(
+        #    nn.Linear(input_size, 256),
+        #    nn.ReLU(),
+        #    nn.Linear(256, 128),
+        #    nn.ReLU(),
+        #    nn.Linear(128, output_size)
+        #)
         self.network = nn.Sequential(
-            nn.Linear(input_size, 256),
+            nn.Linear(126, 512),
             nn.ReLU(),
+            nn.BatchNorm1d(512),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.BatchNorm1d(256),
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Linear(128, output_size)
