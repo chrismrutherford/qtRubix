@@ -292,17 +292,22 @@ class RubiksCubeSolver:
         next_state_histories = []
         
         for i in range(len(batch)):
-            # Get indices for current sequence
-            end_idx = self.memory.index(batch[i])
-            start_idx = max(0, end_idx - history_length + 1)
+            # Get recent states from memory
+            memory_list = list(self.memory)
+            current_idx = memory_list.index(batch[i])
+            start_idx = max(0, current_idx - history_length + 1)
             
             # Collect state history
-            history = [self.memory[j]['state'] for j in range(start_idx, end_idx + 1)]
+            history = []
+            for j in range(start_idx, current_idx + 1):
+                history.append(memory_list[j]['state'])
+            
+            # Pad history if needed
             while len(history) < history_length:
-                history.insert(0, history[0])  # Pad with initial state
+                history.insert(0, history[0] if history else batch[i]['state'])
             state_histories.append(history)
             
-            # Collect next state history
+            # Create next state history
             next_history = history[1:] + [batch[i]['next_state']]
             next_state_histories.append(next_history)
             
