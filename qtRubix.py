@@ -759,37 +759,44 @@ class MainWindow(QMainWindow):
                 # Small delay to allow UI updates
                 QApplication.processEvents()
 
-def train_headless(min_scramble, max_scramble, max_moves, episodes):
-    """Run training in headless mode without GUI"""
+def headless_train(min_scramble, max_scramble, max_moves, episodes):
+    """Run headless DQN training with specified parameters"""
     cube = RubiksCube()
     solver = RubiksSolver()
     try:
         solver.load_model('rubiks_dqn.pth')
-        print("Loaded existing DQN model")
+        print("Loaded existing DQN model:")
+        print(solver.model)
     except:
-        print("Starting with new DQN model")
-    
+        print("Starting with new DQN model:")
+        print(solver.model)
+        
     success_history = []
     window_size = 100
     batch_size = 1280
     
-    print(f"\nStarting headless training:")
-    print(f"Min scramble: {min_scramble}")
-    print(f"Max scramble: {max_scramble}")
-    print(f"Max moves: {max_moves}")
-    print(f"Episodes: {episodes}\n")
-    
     for episode in range(episodes):
         cube.reset()
-        
-        # Scramble
         scramble_steps = random.randint(min_scramble, max_scramble)
+        
+        # Scramble cube
         for _ in range(scramble_steps):
             move = random.choice(['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 'D1', 'D3', 'L1', 'L3', 'R1', 'R3'])
             face = move[0]
             clockwise = move[1] == '1'
             cube.apply_move(face, clockwise)
         
+        scrambled_state = ''
+        for f in ['U', 'R', 'F', 'D', 'L', 'B']:
+            for row in cube.faces[f]:
+                for col in row:
+                    if col == 'white': scrambled_state += 'U'
+                    elif col == 'red': scrambled_state += 'R'
+                    elif col == 'green': scrambled_state += 'F'
+                    elif col == 'yellow': scrambled_state += 'D'
+                    elif col == 'orange': scrambled_state += 'L'
+                    elif col == 'blue': scrambled_state += 'B'
+                    
         state = solver.get_state(cube)
         total_reward = 0
         move_history = []
@@ -798,7 +805,6 @@ def train_headless(min_scramble, max_scramble, max_moves, episodes):
             action = solver.get_action(state)
             old_score = cube.get_basic_score()
             
-            # Apply action
             moves = ['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 'D1', 'D3', 'L1', 'L3', 'R1', 'R3']
             move = moves[action]
             face = move[0]
@@ -829,18 +835,31 @@ def train_headless(min_scramble, max_scramble, max_moves, episodes):
             if done:
                 success_history.append(1)
                 current_success_rate = sum(success_history[-window_size:]) / len(success_history[-window_size:]) * 100
-                print(f"Episode {episode + 1}: Solved in {step + 1} steps, Score: {new_score}%, Success rate: {current_success_rate:.1f}%")
+                print(f"\nEpisode {episode + 1}")
+                print(f"Scramble moves: {scramble_steps} random moves")
+                print(f"Starting state: {scrambled_state}")
+                print(f"Solved in {step + 1} steps with moves: {[moves[a] for a in move_history]}")
+                print(f"Score: {old_score:.1f}% -> {new_score:.1f}%")
+                print(f"Total reward: {total_reward:.2f}")
+                print(f"Success rate: {current_success_rate:.1f}%")
+                print("-" * 80)
                 break
         
         if not done:
             success_history.append(0)
-            if len(success_history) >= window_size:
-                current_success_rate = sum(success_history[-window_size:]) / len(success_history[-window_size:]) * 100
-                print(f"Episode {episode + 1}: Failed to solve, Success rate: {current_success_rate:.1f}%")
-    
-    # Save final model
+            
+        if len(success_history) >= window_size:
+            recent_success_rate = sum(success_history[-window_size:]) / window_size * 100
+            if recent_success_rate > 90:
+                max_scramble += 1
+                max_moves += 1
+                print(f"\nSuccess rate {recent_success_rate:.1f}% > 90%")
+                print(f"Increased max scramble to {max_scramble}")
+                print(f"Increased max moves to {max_moves}")
+                success_history = []
+                
     solver.save_model('rubiks_dqn.pth')
-    final_success_rate = sum(success_history[-window_size:]) / len(success_history[-window_size:]) * 100
+    final_success_rate = sum(success_history) / len(success_history) * 100 if success_history else 0
     print(f"\nTraining complete! Final success rate: {final_success_rate:.1f}%")
 
 if __name__ == '__main__':
@@ -850,13 +869,13 @@ if __name__ == '__main__':
     parser.add_argument('--headless', action='store_true', help='Run in headless mode')
     parser.add_argument('--min-scramble', type=int, default=1, help='Minimum scramble moves')
     parser.add_argument('--max-scramble', type=int, default=3, help='Maximum scramble moves')
-    parser.add_argument('--max-moves', type=int, default=50, help='Maximum solution moves')
-    parser.add_argument('--episodes', type=int, default=1000, help='Number of training episodes')
+    parser.add_argument('--max-moves', type=int, default=50, help='Maximum moves per solve attempt')
+    parser.add_argument('--episodes', type=int, default=10000, help='Number of training episodes')
     
     args = parser.parse_args()
     
     if args.headless:
-        train_headless(args.min_scramble, args.max_scramble, args.max_moves, args.episodes)
+        headless_train(args.min_scramble, args.max_scramble, args.max_moves, args.episodes)
     else:
         app = QApplication(sys.argv)
         window = MainWindow()
