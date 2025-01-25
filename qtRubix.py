@@ -1,8 +1,11 @@
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                             QPushButton, QGraphicsView, QGraphicsScene, QApplication,
-                            QLabel, QOpenGLWidget, QProgressDialog, QCheckBox,
-                            QMessageBox, QSpinBox)
-from dqn_solver import RubiksCubeSolver
+                            QLabel, QOpenGLWidget, QMessageBox, QSpinBox, QProgressDialog)
+from dqnSolve import RubiksSolver
+import torch
+import random
+from twophase import solver as sv, face as fc, cubie
+from twophase.enums import Color, Move
 from PyQt5.QtGui import QColor, QBrush
 from PyQt5.QtCore import Qt, QTimer
 from OpenGL.GL import *
@@ -12,15 +15,15 @@ import math
 
 class RubiksCube:
     def __init__(self):
-        self.scramble_steps = 4  # Default scramble steps
-        self.solve_steps = 20    # Default solve steps
+        # Initialize faces according to Color enum order:
+        # U=0 (white), R=1 (red), F=2 (green), D=3 (yellow), L=4 (orange), B=5 (blue)
         self.default_faces = {
-            'F': [['red']*3 for _ in range(3)],
-            'B': [['orange']*3 for _ in range(3)],
-            'U': [['white']*3 for _ in range(3)],
-            'D': [['yellow']*3 for _ in range(3)],
-            'L': [['green']*3 for _ in range(3)],
-            'R': [['blue']*3 for _ in range(3)]
+            'U': [['white']*3 for _ in range(3)],   # U is white (0)
+            'R': [['red']*3 for _ in range(3)],     # R is red (1)
+            'F': [['green']*3 for _ in range(3)],   # F is green (2)
+            'D': [['yellow']*3 for _ in range(3)],  # D is yellow (3)
+            'L': [['orange']*3 for _ in range(3)],  # L is orange (4)
+            'B': [['blue']*3 for _ in range(3)]     # B is blue (5)
         }
         self.reset()
         
@@ -43,201 +46,80 @@ class RubiksCube:
                      for face, face_data in self.default_faces.items()}
 
     def get_basic_score(self):
-        """Calculate basic completion score based on face matches"""
-        score = 0
-        max_score = 54  # 9 squares per face * 6 faces
+        """Calculate completion score based on number of moves to solve
+        0 moves = 100%, more moves = lower score"""
+        # Convert current state to facelet string
+        facelet_str = ''
+        for f in ['U', 'R', 'F', 'D', 'L', 'B']:
+            for row in self.faces[f]:
+                for col in row:
+                    # Map colors to facelet letters
+                    if col == 'white': facelet_str += 'U'
+                    elif col == 'red': facelet_str += 'R' 
+                    elif col == 'green': facelet_str += 'F'
+                    elif col == 'yellow': facelet_str += 'D'
+                    elif col == 'orange': facelet_str += 'L'
+                    elif col == 'blue': facelet_str += 'B'
         
-        # Check each square against its face's center color
-        for face in self.faces:
-            center = self.faces[face][1][1]  # Center color of this face
-            for row in self.faces[face]:
-                for square in row:
-                    if square == center:
-                        score += 1
-
-        # Convert to percentage
-        return round((score / max_score) * 100, 1)
+        # Get solution from twophase solver
+        solution = sv.solve(facelet_str, 20, 2)  # max 20 moves, 2 sec timeout
         
-    def get_advanced_score(self):
-        """Calculate entropy-based score for cube state"""
-        import math
+        # Extract number of moves from solution string
+        num_moves = int(solution.split('(')[1].split('f')[0])
         
-        # Calculate color distribution entropy for each face
-        total_entropy = 0
-        for face in self.faces:
-            # Count occurrences of each color on this face
-            color_counts = {}
-            total_squares = 9  # 3x3 face
-            
-            for row in self.faces[face]:
-                for color in row:
-                    color_counts[color] = color_counts.get(color, 0) + 1
-            
-            # Calculate entropy for this face
-            face_entropy = 0
-            for count in color_counts.values():
-                p = count / total_squares
-                face_entropy -= p * math.log2(p)
-            
-            total_entropy += face_entropy
+        # Convert to percentage - 0 moves = 100%, 20 moves = 0%
+        score = max(0, 100 - (num_moves * 5))
+        return score
         
-        # Maximum entropy would be when colors are evenly distributed
-        # (log2(6) ≈ 2.58 per face, times 6 faces)
-        max_entropy = 6 * math.log2(6)
+
+    def apply_move(self, face, clockwise=True):
+        """Apply a move to the cube faces using twophase solver's CubieCube"""
+        # Convert face name to Move enum value
+        move_name = face + ("1" if clockwise else "3")
+        move = getattr(Move, move_name)
         
-        # Convert to percentage where 100% means solved (minimum entropy)
-        # and 0% means maximum disorder (maximum entropy)
-        score = (1 - (total_entropy / max_entropy)) * 100
+        # Convert current state to CubieCube
+        facecube = fc.FaceCube()
+        # Build facelet string in URFDLB order
+        facelet_str = ''
+        for f in ['U', 'R', 'F', 'D', 'L', 'B']:
+            for row in self.faces[f]:
+                for col in row:
+                    # Map colors to facelet letters
+                    if col == 'white': facelet_str += 'U'
+                    elif col == 'red': facelet_str += 'R'
+                    elif col == 'green': facelet_str += 'F'
+                    elif col == 'yellow': facelet_str += 'D'
+                    elif col == 'orange': facelet_str += 'L'
+                    elif col == 'blue': facelet_str += 'B'
         
-        return round(score, 1)
-
-    def rotate_face_clockwise(self, face):
-        # Rotate the selected face clockwise
-        self.faces[face] = [list(row) for row in zip(*self.faces[face][::-1])]
+        facecube.from_string(facelet_str)
+        cc = facecube.to_cubie_cube()
         
-        # Define the edges that need to be rotated for each face
-        if face == 'F':
-            # Save the top edge
-            temp = self.faces['U'][0].copy()
-            # Move left edge to top
-            self.faces['U'][0][0] = self.faces['L'][2][2]
-            self.faces['U'][0][1] = self.faces['L'][1][2]
-            self.faces['U'][0][2] = self.faces['L'][0][2]
-            # Move bottom edge to left
-            self.faces['L'][0][2] = self.faces['D'][2][2]
-            self.faces['L'][1][2] = self.faces['D'][2][1]
-            self.faces['L'][2][2] = self.faces['D'][2][0]
-            # Move right edge to bottom
-            self.faces['D'][2][0] = self.faces['R'][2][0]
-            self.faces['D'][2][1] = self.faces['R'][1][0]
-            self.faces['D'][2][2] = self.faces['R'][0][0]
-            # Move saved top edge to right
-            self.faces['R'][0][0] = temp[2]
-            self.faces['R'][1][0] = temp[1]
-            self.faces['R'][2][0] = temp[0]
-            
-        elif face == 'B':
-            # Save the top edge
-            temp = self.faces['U'][2].copy()
-            # Move right edge to top
-            self.faces['U'][2][0] = self.faces['R'][0][2]
-            self.faces['U'][2][1] = self.faces['R'][1][2]
-            self.faces['U'][2][2] = self.faces['R'][2][2]
-            # Move down edge to right
-            self.faces['R'][0][2] = self.faces['D'][0][2]
-            self.faces['R'][1][2] = self.faces['D'][0][1]
-            self.faces['R'][2][2] = self.faces['D'][0][0]
-            # Move left edge to down
-            self.faces['D'][0][0] = self.faces['L'][2][0]
-            self.faces['D'][0][1] = self.faces['L'][1][0]
-            self.faces['D'][0][2] = self.faces['L'][0][0]
-            # Move saved top edge to left
-            self.faces['L'][0][0] = temp[2]
-            self.faces['L'][1][0] = temp[1]
-            self.faces['L'][2][0] = temp[0]
-            
-        elif face == 'L':
-            # Save the front edge
-            temp = [self.faces['F'][i][0] for i in range(3)]
-            # Move top edge to front
+        # Apply the move using twophase's move tables
+        cc.multiply(cubie.moveCube[move])
+        
+        # Convert back to face colors
+        facecube = cc.to_facelet_cube()
+        facelet_str = facecube.to_string()
+        
+        # Update the faces dictionary
+        idx = 0
+        for f in ['U', 'R', 'F', 'D', 'L', 'B']:
             for i in range(3):
-                self.faces['F'][i][0] = self.faces['U'][i][0]
-            # Move back edge to top (reversed)
-            for i in range(3):
-                self.faces['U'][i][0] = self.faces['B'][2-i][2]
-            # Move bottom edge to back (reversed)
-            for i in range(3):
-                self.faces['B'][i][2] = self.faces['D'][2-i][0]
-            # Move saved front edge to bottom
-            for i in range(3):
-                self.faces['D'][i][0] = temp[i]
-                
-        elif face == 'R':
-            # Save the front edge
-            temp = [self.faces['F'][i][2] for i in range(3)]
-            # Move bottom edge to front
-            for i in range(3):
-                self.faces['F'][i][2] = self.faces['D'][i][2]
-            # Move back edge to bottom (reversed)
-            for i in range(3):
-                self.faces['D'][i][2] = self.faces['B'][2-i][0]
-            # Move top edge to back (reversed)
-            for i in range(3):
-                self.faces['B'][i][0] = self.faces['U'][2-i][2]
-            # Move saved front edge to top
-            for i in range(3):
-                self.faces['U'][i][2] = temp[i]
-                
-        elif face == 'U':
-            # Save the front edge
-            temp = self.faces['F'][0].copy()
-            # Move right edge to front
-            self.faces['F'][0] = self.faces['R'][0]
-            # Move back edge to right
-            self.faces['R'][0] = self.faces['B'][0]
-            # Move left edge to back
-            self.faces['B'][0] = self.faces['L'][0]
-            # Move saved front edge to left
-            self.faces['L'][0] = temp
-            
-        elif face == 'D':
-            # Save the front edge
-            temp = self.faces['F'][2].copy()
-            # Move left edge to front
-            self.faces['F'][2] = self.faces['L'][2]
-            # Move back edge to left
-            self.faces['L'][2] = self.faces['B'][2]
-            # Move right edge to back
-            self.faces['B'][2] = self.faces['R'][2]
-            # Move saved front edge to right
-            self.faces['R'][2] = temp
+                for j in range(3):
+                    # Map facelet letters back to colors
+                    if facelet_str[idx] == 'U': self.faces[f][i][j] = 'white'
+                    elif facelet_str[idx] == 'R': self.faces[f][i][j] = 'red'
+                    elif facelet_str[idx] == 'F': self.faces[f][i][j] = 'green'
+                    elif facelet_str[idx] == 'D': self.faces[f][i][j] = 'yellow'
+                    elif facelet_str[idx] == 'L': self.faces[f][i][j] = 'orange'
+                    elif facelet_str[idx] == 'B': self.faces[f][i][j] = 'blue'
+                    idx += 1
 
 
-    def rotate_M(self):
-        # Middle layer between L and R faces
-        for i in range(3):
-            temp = self.faces['F'][i][1]
-            self.faces['F'][i][1] = self.faces['U'][i][1]
-            self.faces['U'][i][1] = self.faces['B'][i][1]
-            self.faces['B'][i][1] = self.faces['D'][i][1]
-            self.faces['D'][i][1] = temp
 
-    def rotate_E(self):
-        # Equatorial layer between U and D faces
-        temp = self.faces['F'][1]
-        self.faces['F'][1] = self.faces['R'][1]
-        self.faces['R'][1] = self.faces['B'][1]
-        self.faces['B'][1] = self.faces['L'][1]
-        self.faces['L'][1] = temp
 
-    def rotate_S(self):
-        # Standing layer between F and B faces
-        for i in range(3):
-            temp = self.faces['U'][1][i]
-            self.faces['U'][1][i] = self.faces['L'][2-i][1]
-            self.faces['L'][2-i][1] = self.faces['D'][1][2-i]
-            self.faces['D'][1][2-i] = self.faces['R'][i][1]
-            self.faces['R'][i][1] = temp
-
-    def rotate_face_counterclockwise(self, face):
-        # Rotate face counterclockwise by doing 3 clockwise rotations
-        for _ in range(3):
-            self.rotate_face_clockwise(face)
-
-    def rotate_M_ccw(self):
-        # Counterclockwise middle layer rotation
-        for _ in range(3):
-            self.rotate_M()
-
-    def rotate_E_ccw(self):
-        # Counterclockwise equatorial layer rotation
-        for _ in range(3):
-            self.rotate_E()
-
-    def rotate_S_ccw(self):
-        # Counterclockwise standing layer rotation
-        for _ in range(3):
-            self.rotate_S()
 
 class CubeFaceView(QWidget):
     def __init__(self, face_name):
@@ -365,12 +247,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.cube = RubiksCube()
-        # Initialize solver at startup
-        self.solver = RubiksCubeSolver(self.cube)
-        self.blink_timer = QTimer()
-        self.blink_timer.timeout.connect(self.blink_timeout)
-        self.blink_count = 0
-        self.original_style = None
+        self.move_history = []  # Track moves made
+        self.solver = RubiksSolver()
+        # Load existing network if available
+        try:
+            self.solver.load_model('rubiks_dqn.pth')
+            print("Loaded existing DQN model:")
+            print(self.solver.model)
+        except:
+            print("Starting with new DQN model:")
+            print(self.solver.model)
         self.init_ui()
 
     def init_ui(self):
@@ -386,20 +272,36 @@ class MainWindow(QMainWindow):
         self.gl_widget.setFixedHeight(300)
         layout.addWidget(self.gl_widget)
 
-        # Create 2D cube views
-        faces_layout = QHBoxLayout()
+        # Create 2D cube views in Facelet enum layout
+        faces_layout = QGridLayout()
+        faces_layout.setSpacing(2)
         self.views = {}
-        for face in ['F', 'B', 'U', 'D', 'L', 'R']:
+        
+        # Create all face views first
+        for face in ['U', 'R', 'F', 'D', 'L', 'B']:
             view = CubeFaceView(face)
             self.views[face] = view
-            faces_layout.addWidget(view)
+            
+        # Arrange in Facelet enum layout
+        # Add U face (top)
+        faces_layout.addWidget(self.views['U'], 0, 1)
+        
+        # Add middle row (L, F, R, B)
+        faces_layout.addWidget(self.views['L'], 1, 0)
+        faces_layout.addWidget(self.views['F'], 1, 1)
+        faces_layout.addWidget(self.views['R'], 1, 2)
+        faces_layout.addWidget(self.views['B'], 1, 3)
+        
+        # Add D face (bottom)
+        faces_layout.addWidget(self.views['D'], 2, 1)
+        
         layout.addLayout(faces_layout)
 
         # Create move buttons
         moves_layout = QVBoxLayout()
         
-        # Clockwise moves
-        cw_moves = ['F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S']
+        # Clockwise moves (1)
+        cw_moves = ['F1', 'B1', 'U1', 'D1', 'L1', 'R1'] 
         cw_layout = QHBoxLayout()
         for move in cw_moves:
             btn = QPushButton(move)
@@ -409,8 +311,8 @@ class MainWindow(QMainWindow):
             cw_layout.addWidget(btn)
         moves_layout.addLayout(cw_layout)
         
-        # Counterclockwise moves
-        ccw_moves = ["F'", "B'", "U'", "D'", "L'", "R'", "M'", "E'", "S'"]
+        # Counterclockwise moves (3)
+        ccw_moves = ['F3', 'B3', 'U3', 'D3', 'L3', 'R3']
         ccw_layout = QHBoxLayout()
         for move in ccw_moves:
             btn = QPushButton(move)
@@ -425,23 +327,6 @@ class MainWindow(QMainWindow):
         # Add utility buttons
         utils_layout = QHBoxLayout()
         
-        # Scramble controls
-        scramble_layout = QHBoxLayout()
-        random_btn = QPushButton("Random")
-        random_btn.setFixedSize(80, 40)
-        random_btn.clicked.connect(self.random_scramble)
-        random_btn.setToolTip("Perform random moves")
-        scramble_layout.addWidget(random_btn)
-        
-        self.scramble_spin = QSpinBox()
-        self.scramble_spin.setRange(1, 1000000)
-        self.scramble_spin.setValue(4)
-        self.scramble_spin.setToolTip("Number of scramble moves for training")
-        self.scramble_spin.valueChanged.connect(self.update_scramble_steps)
-        scramble_layout.addWidget(self.scramble_spin)
-        
-        utils_layout.addLayout(scramble_layout)
-        
         # Reset button
         reset_btn = QPushButton("Reset")
         reset_btn.setFixedSize(80, 40)
@@ -449,42 +334,97 @@ class MainWindow(QMainWindow):
         reset_btn.setToolTip("Reset cube to initial state")
         utils_layout.addWidget(reset_btn)
         
-        # Solve controls
-        solve_layout = QHBoxLayout()
+        # Scramble controls
+        scramble_layout = QHBoxLayout()
+        scramble_layout.setSpacing(5)
+        
+        # Number of scramble moves spinbox
+        self.scramble_moves = QSpinBox()
+        self.scramble_moves.setRange(1, 100)
+        self.scramble_moves.setValue(20)
+        self.scramble_moves.setFixedSize(50, 40)
+        self.scramble_moves.setToolTip("Number of random moves")
+        scramble_layout.addWidget(self.scramble_moves)
+        
+        # Scramble button  
+        random_btn = QPushButton("Scramble")
+        random_btn.setFixedSize(80, 40)
+        random_btn.clicked.connect(self.random_scramble)
+        random_btn.setToolTip("Perform random moves")
+        scramble_layout.addWidget(random_btn)
+        
+        utils_layout.addLayout(scramble_layout)
+        
+        # Add DQN controls
+        dqn_layout = QHBoxLayout()
+        
+        # Training controls layout
+        train_controls = QHBoxLayout()
+        
+        # Min scramble steps spinbox
+        min_scramble_label = QLabel("Min Scramble:")
+        train_controls.addWidget(min_scramble_label)
+        self.min_scramble_steps = QSpinBox()
+        self.min_scramble_steps.setRange(1, 100)
+        self.min_scramble_steps.setValue(1)
+        self.min_scramble_steps.setFixedSize(50, 40)
+        self.min_scramble_steps.setToolTip("Minimum number of scramble moves per episode")
+        train_controls.addWidget(self.min_scramble_steps)
+
+        # Max scramble steps spinbox
+        max_scramble_label = QLabel("Max Scramble:")
+        train_controls.addWidget(max_scramble_label)
+        self.max_scramble_steps = QSpinBox()
+        self.max_scramble_steps.setRange(1, 100)
+        self.max_scramble_steps.setValue(3)
+        self.max_scramble_steps.setFixedSize(50, 40)
+        self.max_scramble_steps.setToolTip("Maximum number of scramble moves per episode")
+        train_controls.addWidget(self.max_scramble_steps)
+        
+        # Max moves spinbox
+        max_moves_label = QLabel("Max Moves:")
+        train_controls.addWidget(max_moves_label)
+        self.max_moves = QSpinBox()
+        self.max_moves.setRange(1, 200)
+        self.max_moves.setValue(1)
+        self.max_moves.setFixedSize(50, 40)
+        self.max_moves.setToolTip("Maximum moves allowed before resetting")
+        train_controls.addWidget(self.max_moves)
+
+        # Episodes spinbox
+        episodes_label = QLabel("Episodes:")
+        train_controls.addWidget(episodes_label)
+        self.train_episodes = QSpinBox()
+        self.train_episodes.setRange(1, 10000)
+        self.train_episodes.setValue(1000)
+        self.train_episodes.setFixedSize(70, 40)
+        self.train_episodes.setToolTip("Number of training episodes")
+        train_controls.addWidget(self.train_episodes)
+        
+        dqn_layout.addLayout(train_controls)
+        
+        # Train button
+        train_btn = QPushButton("Train DQN")
+        train_btn.setFixedSize(80, 40)
+        train_btn.clicked.connect(self.train_dqn)
+        train_btn.setToolTip("Train the DQN solver")
+        dqn_layout.addWidget(train_btn)
+        
+        # Save button
+        save_btn = QPushButton("Save Net")
+        save_btn.setFixedSize(80, 40)
+        save_btn.clicked.connect(lambda: self.solver.save_model('rubiks_dqn.pth'))
+        save_btn.setToolTip("Save current network state")
+        dqn_layout.addWidget(save_btn)
+        
+        # Solve button
         solve_btn = QPushButton("Solve")
         solve_btn.setFixedSize(80, 40)
-        solve_btn.setEnabled(True)
         solve_btn.clicked.connect(self.solve_cube)
-        solve_btn.setToolTip("Attempt to solve cube")
-        solve_layout.addWidget(solve_btn)
+        solve_btn.setToolTip("Solve using trained DQN")
+        dqn_layout.addWidget(solve_btn)
         
-        self.solve_spin = QSpinBox()
-        self.solve_spin.setRange(1, 1000000)
-        self.solve_spin.setValue(20)
-        self.solve_spin.setToolTip("Maximum solve moves for training")
-        self.solve_spin.valueChanged.connect(self.update_solve_steps)
-        solve_layout.addWidget(self.solve_spin)
-        
-        utils_layout.addLayout(solve_layout)
-        
-        # Train button (placeholder)
-        train_btn = QPushButton("Train")
-        train_btn.setFixedSize(80, 40)
-        train_btn.setToolTip("Train DQN solver")
-        train_btn.clicked.connect(self.train_solver)
-        utils_layout.addWidget(train_btn)
-        
-        # Add save button
-        save_btn = QPushButton("Save Network")
-        save_btn.clicked.connect(self.save_network)
-        save_btn.setToolTip("Save the current network weights")
-        utils_layout.addWidget(save_btn)
-        
-        # Add real-time update checkbox
-        self.realtime_updates = QCheckBox("Real-time Updates")
-        self.realtime_updates.setChecked(True)
-        self.realtime_updates.setToolTip("Enable/disable real-time UI updates during training")
-        utils_layout.addWidget(self.realtime_updates)
+        utils_layout.addLayout(dqn_layout)
         
         layout.addLayout(utils_layout)
 
@@ -509,53 +449,53 @@ class MainWindow(QMainWindow):
 
     def get_move_description(self, move):
         descriptions = {
-            'F': 'Rotate Front face clockwise',
-            'B': 'Rotate Back face clockwise',
-            'U': 'Rotate Up face clockwise',
-            'D': 'Rotate Down face clockwise',
-            'L': 'Rotate Left face clockwise',
-            'R': 'Rotate Right face clockwise',
-            'M': 'Rotate Middle layer (between L and R)',
-            'E': 'Rotate Equatorial layer (between U and D)',
-            'S': 'Rotate Standing layer (between F and B)',
-            "F'": 'Rotate Front face counterclockwise',
-            "B'": 'Rotate Back face counterclockwise',
-            "U'": 'Rotate Up face counterclockwise',
-            "D'": 'Rotate Down face counterclockwise',
-            "L'": 'Rotate Left face counterclockwise',
-            "R'": 'Rotate Right face counterclockwise',
-            "M'": 'Rotate Middle layer counterclockwise',
-            "E'": 'Rotate Equatorial layer counterclockwise',
-            "S'": 'Rotate Standing layer counterclockwise',
+            'F1': 'Rotate Front face clockwise',
+            'B1': 'Rotate Back face clockwise', 
+            'U1': 'Rotate Up face clockwise',
+            'D1': 'Rotate Down face clockwise',
+            'L1': 'Rotate Left face clockwise',
+            'R1': 'Rotate Right face clockwise',
+            'F3': 'Rotate Front face counterclockwise',
+            'B3': 'Rotate Back face counterclockwise',
+            'U3': 'Rotate Up face counterclockwise',
+            'D3': 'Rotate Down face counterclockwise',
+            'L3': 'Rotate Left face counterclockwise',
+            'R3': 'Rotate Right face counterclockwise',
         }
         return descriptions.get(move, 'Perform move ' + move)
 
     def perform_move(self, move):
-        if move == 'U':
-            self.cube.rotate_face_clockwise('D')
-        elif move == 'D':
-            self.cube.rotate_face_clockwise('U')
-        elif move in ['F', 'B', 'L', 'R']:
-            self.cube.rotate_face_clockwise(move)
-        elif move == 'M':
-            self.cube.rotate_M()
-        elif move == 'E':
-            self.cube.rotate_E()
-        elif move == 'S':
-            self.cube.rotate_S()
-        # Counterclockwise moves
-        elif move == "U'":
-            self.cube.rotate_face_counterclockwise('D')
-        elif move == "D'":
-            self.cube.rotate_face_counterclockwise('U')
-        elif move[-1] == "'" and move[0] in ['F', 'B', 'L', 'R']:
-            self.cube.rotate_face_counterclockwise(move[0])
-        elif move == "M'":
-            self.cube.rotate_M_ccw()
-        elif move == "E'":
-            self.cube.rotate_E_ccw()
-        elif move == "S'":
-            self.cube.rotate_S_ccw()
+        # Validate move against twophase Move enum
+        valid_moves = ['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 'D1', 'D3', 'L1', 'L3', 'R1', 'R3',
+                      'F2', 'B2', 'U2', 'D2', 'L2', 'R2']
+        if move not in valid_moves:
+            print(f"Invalid move: {move}")
+            return
+            
+        print(f"\nPerforming move: {move}")
+        score_before = self.cube.get_basic_score()
+        self.move_history.append(move)  # Add move to history
+        
+        # Print initial state of faces
+        print("Before move:")
+        for face in ['U', 'R', 'F', 'D', 'L', 'B']:
+            print(f"{face}: {self.cube.faces[face]}")
+        
+        # Extract face letter and determine direction
+        face = move[0]  # First character is face letter
+        clockwise = move[-1] == '1'  # Last character is 1 for clockwise, 3 for counterclockwise
+        
+        self.cube.apply_move(face, clockwise=clockwise)
+            
+        score_after = self.cube.get_basic_score()
+        
+        # Print final state of faces
+        print("\nAfter move:")
+        for face in ['U', 'R', 'F', 'D', 'L', 'B']:
+            print(f"{face}: {self.cube.faces[face]}")
+            
+        print(f"\nScore changed from {score_before}% to {score_after}%")
+        
         self.update_views()
         self.update_score()
 
@@ -564,139 +504,243 @@ class MainWindow(QMainWindow):
             view.update_face(self.cube.faces[face], self.cube.colors)
         self.gl_widget.update()
 
+    def reset_cube(self):
+        """Reset the cube to its initial solved state"""
+        self.cube.reset()
+        self.move_history = []  # Clear move history
+        self.update_views()
+        self.update_score()
+
+    def get_facelet_string(self):
+        """Get the cube state in twophase solver format"""
+        # Convert colors to face names according to Color enum
+        color_to_face = {}
+        for face in self.cube.faces:
+            center_color = self.cube.faces[face][1][1]  # Get center color
+            color_to_face[center_color] = face
+        
+        # Build string in correct facelet order per Facelet enum
+        faces = ['U', 'R', 'F', 'D', 'L', 'B']  # Color enum order
+        facelet_string = ''
+        for face in faces:
+            face_data = self.cube.faces[face]
+            for row in range(3):
+                for col in range(3):
+                    facelet_string += color_to_face[face_data[row][col]]
+        return facelet_string
+
+    def update_score(self):
+        """Update the score display"""
+        score = self.cube.get_basic_score()
+        self.score_label.setText(f"Completion Score: {score}%")
+        
+        # Convert colors to face names according to Color enum
+        # The mapping must match the center colors of each face
+        color_to_face = {}
+        for face in self.cube.faces:
+            center_color = self.cube.faces[face][1][1]  # Get center color
+            color_to_face[center_color] = face
+        
+        # Build string in correct facelet order per Facelet enum
+        faces = ['U', 'R', 'F', 'D', 'L', 'B']  # Color enum order
+        facelet_string = ''
+        for face in faces:
+            face_data = self.cube.faces[face]
+            # Read face data in Facelet enum order (U1->U9, R1->R9, etc.)
+            # Each face is read row by row, left-to-right, top-to-bottom
+            for row in range(3):
+                for col in range(3):
+                    facelet_string += color_to_face[face_data[row][col]]
+                    
+        print(f"\nCube State: {facelet_string}")
+        
+        # Print formatted cube state
+        print("Current Cube State:")
+        for face in ['U', 'R', 'F', 'D', 'L', 'B']:
+            print(f"{face}: {self.cube.faces[face]}")
+        
+        # Send cube state to solver
+        try:
+            solution = sv.solve(facelet_string, 20, 2)  # max 20 moves, 2 sec timeout
+            print(f"Solver solution: {solution}")
+        except Exception as e:
+            print(f"Solver error: {e}")
+    
+        
+    def is_valid_state(self):
+        """Check if current cube state is valid"""
+        # Count occurrences of each color
+        color_counts = {color: 0 for color in self.cube.colors.keys()}
+        
+        for face in self.cube.faces.values():
+            for row in face:
+                for color in row:
+                    color_counts[color] += 1
+        
+        # Each color should appear exactly 9 times
+        return all(count == 9 for count in color_counts.values())
+
+    def calculate_reward(self, old_score, new_score):
+        # Base reward from score improvement
+        reward = (new_score - old_score) / 20.0  # Larger scale for improvements
+        
+        # Bonus for solving
+        if new_score == 100:
+            reward += 5.0  # Much larger solving bonus
+            
+        # Smaller penalty for getting worse
+        elif new_score < old_score:
+            reward -= 0.1  # Reduced penalty
+            
+        # Small step penalty to encourage efficiency
+        reward -= 0.01
+        
+        return reward
+
+    def train_dqn(self):
+        """Train the DQN solver"""
+        episodes = self.train_episodes.value()
+        batch_size = 128  # Larger batch size
+        success_history = []
+        progress = QProgressDialog("Training DQN...", "Cancel", 0, episodes, self)
+        progress.setWindowModality(Qt.WindowModal)
+        
+        for episode in range(episodes):
+            if progress.wasCanceled():
+                break
+                
+            self.cube.reset()
+            
+            # Use min/max scramble steps from UI
+            scramble_steps = random.randint(
+                self.min_scramble_steps.value(),
+                self.max_scramble_steps.value()
+            )
+            
+            # Scramble cube with random moves
+            for _ in range(scramble_steps):
+                move = random.choice(['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 'D1', 'D3', 'L1', 'L3', 'R1', 'R3'])
+                face = move[0]
+                clockwise = move[1] == '1'
+                self.cube.apply_move(face, clockwise)
+            
+            # Get post-scramble state
+            scrambled_state = self.get_facelet_string()
+            state = self.solver.get_state(self.cube)
+            total_reward = 0
+            self.move_history = []
+            
+            # Use max moves from UI
+            for step in range(self.max_moves.value()):
+                action = self.solver.get_action(state)
+                old_score = self.cube.get_basic_score()
+                
+                # Apply action
+                moves = ['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 
+                        'D1', 'D3', 'L1', 'L3', 'R1', 'R3']
+                move = moves[action]
+                face = move[0]
+                clockwise = move[1] == '1'
+                self.cube.apply_move(face, clockwise)
+                
+                # Calculate reward
+                new_score = self.cube.get_basic_score()
+                reward = self.calculate_reward(old_score, new_score)
+                total_reward += reward
+                
+                next_state = self.solver.get_state(self.cube)
+                done = new_score == 100
+                
+                # Store move and experience
+                self.move_history.append(action)
+                self.solver.remember(state, action, reward, next_state, done)
+                
+                # Train on larger batch
+                if len(self.solver.memory) >= batch_size:
+                    self.solver.replay(batch_size)
+                    
+                state = next_state
+                
+                if done:
+                    success_history.append(1)
+                    current_success_rate = sum(success_history) / len(success_history) * 100
+                    print(f"\nEpisode {episode + 1}")
+                    print(f"Scramble moves: {scramble_steps} random moves")
+                    print(f"Starting state: {scrambled_state}")
+                    print(f"Solved in {step + 1} steps with moves: {[moves[a] for a in self.move_history]}")
+                    print(f"Score: {old_score:.1f}% -> {new_score:.1f}%")
+                    print(f"Total reward: {total_reward:.2f}")
+                    print(f"Success rate: {current_success_rate:.1f}%")
+                    print("-" * 80)
+                    break
+            
+            if not done:
+                success_history.append(0)
+            
+            
+            progress.setValue(episode + 1)
+            QApplication.processEvents()
+            
+        # Calculate final success rate from history
+        final_success_rate = sum(success_history) / len(success_history) * 100 if success_history else 0
+        
+        # Auto-save after training
+        self.solver.save_model('rubiks_dqn.pth')
+        QMessageBox.information(self, "Training Complete", 
+                              f"Training finished!\nSuccess rate: {final_success_rate:.1f}%")
+        
+    def solve_cube(self):
+        """Attempt to solve cube using trained DQN"""
+        if not hasattr(self.solver, 'model'):
+            QMessageBox.warning(self, "Error", "Please train the DQN first!")
+            return
+            
+        max_moves = 50
+        state = self.solver.get_state(self.cube)
+        
+        for _ in range(max_moves):
+            action = self.solver.get_action(state)
+            moves = ['F1', 'F3', 'B1', 'B3', 'U1', 'U3', 'D1', 'D3', 'L1', 'L3', 'R1', 'R3']
+            move = moves[action]
+            
+            # Perform move through UI
+            self.perform_move(move)
+            QApplication.processEvents()
+            
+            # Check if solved
+            score = self.cube.get_basic_score()
+            if score == 100:
+                QMessageBox.information(self, "Success", "Cube solved!")
+                return
+                
+            state = self.solver.get_state(self.cube)
+            
+        QMessageBox.warning(self, "Warning", "Could not solve cube in maximum moves!")
+
     def random_scramble(self):
         """Perform random moves to scramble the cube"""
         import random
         self.cube.reset()  # Reset first
-        self.solver.env.initial_state = None  # Clear initial state before scrambling
-        self.moves_remaining = self.scramble_spin.value()
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.perform_random_move)
-        self.timer.start(10)  # 10ms between moves
         
-    def perform_random_move(self):
-        """Perform a single random move"""
-        import random
-        moves = ['F', 'B', 'U', 'D', 'L', 'R', 'M', 'E', 'S',
-                "F'", "B'", "U'", "D'", "L'", "R'", "M'", "E'", "S'"]
-        move = random.choice(moves)
-        self.perform_move(move)
+        # All possible moves
+        moves = ['F1', 'B1', 'U1', 'D1', 'L1', 'R1',
+                'F3', 'B3', 'U3', 'D3', 'L3', 'R3']
+                
+        # Find all move buttons
+        move_buttons = {}
+        for layout in self.findChildren(QHBoxLayout):
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if isinstance(widget, QPushButton) and widget.text() in moves:
+                    move_buttons[widget.text()] = widget
         
-        self.moves_remaining -= 1
-        if self.moves_remaining <= 0:
-            self.timer.stop()
-            # Set initial state after scrambling is complete
-            self.solver.env.initial_state = self.solver.env.get_current_state()
-
-    def reset_cube(self):
-        """Reset the cube to its initial solved state"""
-        self.cube.reset()
-        self.update_views()
-        self.update_score()
-
-    def update_score(self):
-        """Update the score display"""
-        basic_score = self.cube.get_basic_score()
-        entropy_score = self.cube.get_advanced_score()
-        self.score_label.setText(f"Basic Score: {basic_score}% | Entropy Score: {entropy_score}%")
-        
-    def blink_success(self):
-        """Start blinking animation for success"""
-        if self.original_style is None:
-            self.original_style = self.score_label.styleSheet()
-        self.blink_count = 0
-        self.blink_timer.start(250)  # Blink every 250ms
-        
-    def blink_timeout(self):
-        """Handle each blink interval"""
-        self.blink_count += 1
-        if self.blink_count > 6:  # 3 full blinks
-            self.blink_timer.stop()
-            self.score_label.setStyleSheet(self.original_style)
-            return
-            
-        if self.blink_count % 2 == 0:
-            self.score_label.setStyleSheet(self.original_style)
-        else:
-            self.score_label.setStyleSheet("""
-                QLabel { 
-                    color: black; 
-                    font-weight: bold;
-                    font-size: 14px;
-                    background-color: #00ff00;
-                    padding: 5px;
-                    border-radius: 3px;
-                }
-            """)
-        
-    def save_network(self):
-        """Save the current network weights"""
-        if hasattr(self, 'solver'):
-            self.solver.save_model()
-            QMessageBox.information(self, "Success", "Network saved successfully!")
-        else:
-            QMessageBox.warning(self, "Error", "No trained network to save!")
-            
-    def solve_cube(self):
-        """Attempt to solve the cube using the trained solver"""
-        solution, reward, scrambled_state, state_history = self.solver.solve(max_steps=self.solve_spin.value())
-        if solution:
-            self.blink_success()  # Trigger success animation
-            
-            # Build detailed solution message showing each move and resulting state
-            message = f"Solution found with {len(solution)} moves!\n\n"
-            message += f"Initial Scrambled State:\n{scrambled_state}\n\n"
-            message += "Solution Steps:\n"
-            
-            # Add each move and the resulting state
-            for i, (move, state) in enumerate(zip(solution, state_history[1:]), 1):
-                message += f"\nStep {i}: {move}\n"
-                message += f"State after move:\n{state}\n"
-                message += "-" * 40  # Separator line
-            QMessageBox.information(self, "Solution Details", message)
-        else:
-            QMessageBox.warning(self, "No Solution", "Could not find solution within move limit")
-            
-    def update_scramble_steps(self, value):
-        """Update cube's scramble steps setting"""
-        self.cube.scramble_steps = value
-        
-    def update_solve_steps(self, value):
-        """Update cube's solve steps setting"""
-        self.cube.solve_steps = value
-        
-    def train_solver(self):
-        """Train the DQN solver"""
-        print("\nStarting training...")
-        
-        def update_ui():
-            """Update UI and process events if real-time updates are enabled"""
-            self.update_views()
-            self.update_score()
-            QApplication.processEvents()
-        
-        # Create progress dialog
-        progress = QProgressDialog("Training DQN solver...", "Cancel", 0, 1000000, self)
-        progress.setWindowTitle("Training Progress")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        
-        def training_callback():
-            """Combined callback that handles successful solves"""
-            if self.realtime_updates.isChecked():
-                update_ui()  # Update UI if real-time enabled
-                self.blink_success()  # Trigger blink animation on success
-        
-        # Train in batches to update UI
-        training_iterations = 1000000
-        for i in range(training_iterations):
-            if progress.wasCanceled():
-                break
-            self.solver.train(callback=training_callback)
-            progress.setValue(i)
-            QApplication.processEvents()
-        
-        progress.setValue(training_iterations)
+        # Perform random moves by clicking buttons
+        for _ in range(self.scramble_moves.value()):
+            move = random.choice(moves)
+            if move in move_buttons:
+                move_buttons[move].click()
+                # Small delay to allow UI updates
+                QApplication.processEvents()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
